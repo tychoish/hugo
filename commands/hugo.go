@@ -56,6 +56,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/fsync"
 	jww "github.com/spf13/jwalterweatherman"
+
+	"github.com/tychoish/shimgo"
 )
 
 // The Response value from Execute.
@@ -82,6 +84,9 @@ func Execute(args []string) Response {
 	hugoCmd := newCommandsBuilder().addAll().build()
 	cmd := hugoCmd.getCommand()
 	cmd.SetArgs(args)
+	cmd.PostRun = func(_ *cobra.Command, _ []string) {
+		shimgo.Cleanup()
+	}
 
 	c, err := cmd.ExecuteC()
 

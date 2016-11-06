@@ -36,6 +36,7 @@ import (
 	"github.com/spf13/cast"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/tychoish/shimgo"
 )
 
 var emptyPage = ""
@@ -453,6 +454,12 @@ func checkError(t *testing.T, err error, expected string) {
 	}
 }
 
+func TestMain(m *testing.M) {
+	code := m.Run()
+	shimgo.Cleanup()
+	os.Exit(code)
+}
+
 func TestDegenerateEmptyPageZeroLengthName(t *testing.T) {
 	t.Parallel()
 	s := newTestSite(t)
@@ -618,7 +625,6 @@ func testAllMarkdownEnginesForPages(t *testing.T,
 		require.Contains(t, home.content(), "Home Page Content")
 
 	}
-
 }
 
 func TestCreateNewPage(t *testing.T) {
