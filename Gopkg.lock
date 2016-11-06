@@ -319,6 +319,12 @@
   version = "v1.2.0"
 
 [[projects]]
+  branch = "master"
+  name = "github.com/tychoish/shimgo"
+  packages = ["."]
+  revision = "27b443b1b1f88f7634b851a2a9e3da68463c9544"
+
+[[projects]]
   name = "github.com/yosssi/ace"
   packages = ["."]
   revision = "ea038f4770b6746c3f8f84f14fa60d9fe1205b56"
@@ -392,6 +398,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "ce63da7f660e0ba60a8ae81f5808f8e685b2055169838fbc3c4d5c418e58b3d1"
+  inputs-digest = "51328a051a81353ab01c495dede6224e8f6cc313663f8e8d57e936e04e445122"
   solver-name = "gps-cdcl"
   solver-version = 1
