@@ -49,6 +49,7 @@ require (
 	github.com/spf13/viper v1.3.1
 	github.com/stretchr/testify v1.2.3-0.20181014000028-04af85275a5c
 	github.com/tdewolff/minify/v2 v2.3.7
+	github.com/tychoish/shimgo v0.0.0-20181231152250-dadfa3df4ee9
 	github.com/yosssi/ace v0.0.5
 	golang.org/x/image v0.0.0-20180708004352-c73c2afc3b81
 	golang.org/x/net v0.0.0-20180906233101-161cd47e91fd // indirect

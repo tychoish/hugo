@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"html/template"
 	"os/exec"
-	"runtime"
 	"unicode"
 	"unicode/utf8"
 
@@ -35,6 +34,7 @@ import (
 	"github.com/mitchellh/mapstructure"
 	"github.com/russross/blackfriday"
 	jww "github.com/spf13/jwalterweatherman"
+	"github.com/tychoish/shimgo"
 
 	"strings"
 )
@@ -601,121 +601,86 @@ func (c *ContentSpec) truncateWordsToWholeSentenceOld(content string) (string, b
 	return strings.Join(words[:c.summaryLength], " "), true
 }
 
-func getAsciidocExecPath() string {
-	path, err := exec.LookPath("asciidoc")
-	if err != nil {
-		return ""
-	}
-	return path
+// HasAsciidoctor returns whether Asciidoctor is supported by shim server.
+func HasAsciidoctor() bool {
+	return shimgo.SupportsAsciidoctor()
 }
 
-func getAsciidoctorExecPath() string {
-	path, err := exec.LookPath("asciidoctor")
-	if err != nil {
-		return ""
-	}
-	return path
-}
-
-// HasAsciidoc returns whether Asciidoc or Asciidoctor is installed on this computer.
+// HasAsciidoc returns whether Asciidoc is supported by shim server.
 func HasAsciidoc() bool {
-	return (getAsciidoctorExecPath() != "" ||
-		getAsciidocExecPath() != "")
+	return shimgo.SupportsAsciiDoc()
 }
 
 // getAsciidocContent calls asciidoctor or asciidoc as an external helper
 // to convert AsciiDoc content to HTML.
 func getAsciidocContent(ctx *RenderingContext) []byte {
-	var isAsciidoctor bool
-	path := getAsciidoctorExecPath()
-	if path == "" {
-		path = getAsciidocExecPath()
-		if path == "" {
-			jww.ERROR.Println("asciidoctor / asciidoc not found in $PATH: Please install.\n",
-				"                 Leaving AsciiDoc content unrendered.")
-			return ctx.Content
-		}
+	content := ctx.Content
+	cleanContent := bytes.Replace(content, SummaryDivider, []byte(""), 1)
+
+	var out []byte
+	var err error
+	if HasAsciidoctor() {
+		out, err = shimgo.ConvertFromAsciidoctor(cleanContent)
+	} else if HasAsciidoc() {
+		out, err = shimgo.ConvertFromAsciiDoc(cleanContent)
 	} else {
-		isAsciidoctor = true
+		jww.ERROR.Println("asciidoctor / asciidoc is not supported: Please install required dependencies (sinatra; asciidoctor; flask).\n",
+			"                 Leaving AsciiDoc content unrendered.")
+		return content
 	}
 
-	jww.INFO.Println("Rendering", ctx.DocumentName, "with", path, "...")
-	args := []string{"--no-header-footer", "--safe"}
-	if isAsciidoctor {
-		// asciidoctor-specific arg to show stack traces on errors
-		args = append(args, "--trace")
+	if out == nil {
+		if err != nil {
+			jww.ERROR.Printf("problem converting %s to asciidoc; dependencies (sinatra; asciidoctor; flask) may not be installed (%v)",
+				ctx.DocumentName, err)
+			return nil
+		}
+
+		jww.ERROR.Printf("unknown error converting asciidoc; %s not rendered", ctx.DocumentName)
+		return nil
 	}
-	args = append(args, "-")
-	return externallyRenderContent(ctx, path, args)
+
+	if err != nil {
+		errString := err.Error()
+		// asciidoctor puts warnings to stderr
+		if strings.Contains(errString, "WARNING:") {
+			jww.WARN.Printf("found asciidoc warning: %s:%s", ctx.DocumentName, errString)
+		} else {
+			jww.ERROR.Printf("found asciidoc error: %s:%s", ctx.DocumentName, errString)
+		}
+	}
+
+	return out
 }
 
 // HasRst returns whether rst2html is installed on this computer.
 func HasRst() bool {
-	return getRstExecPath() != ""
-}
-
-func getRstExecPath() string {
-	path, err := exec.LookPath("rst2html")
-	if err != nil {
-		path, err = exec.LookPath("rst2html.py")
-		if err != nil {
-			return ""
-		}
-	}
-	return path
-}
-
-func getPythonExecPath() string {
-	path, err := exec.LookPath("python")
-	if err != nil {
-		path, err = exec.LookPath("python.exe")
-		if err != nil {
-			return ""
-		}
-	}
-	return path
+	return shimgo.SupportsRst()
 }
 
 // getRstContent calls the Python script rst2html as an external helper
 // to convert reStructuredText content to HTML.
 func getRstContent(ctx *RenderingContext) []byte {
-	path := getRstExecPath()
+	content := ctx.Content
+	cleanContent := bytes.Replace(content, SummaryDivider, []byte(""), 1)
 
-	if path == "" {
-		jww.ERROR.Println("rst2html / rst2html.py not found in $PATH: Please install.\n",
-			"                 Leaving reStructuredText content unrendered.")
-		return ctx.Content
-
-	}
-	jww.INFO.Println("Rendering", ctx.DocumentName, "with", path, "...")
-	var result []byte
-	// certain *nix based OSs wrap executables in scripted launchers
-	// invoking binaries on these OSs via python interpreter causes SyntaxError
-	// invoke directly so that shebangs work as expected
-	// handle Windows manually because it doesn't do shebangs
-	if runtime.GOOS == "windows" {
-		python := getPythonExecPath()
-		args := []string{path, "--leave-comments", "--initial-header-level=2"}
-		result = externallyRenderContent(ctx, python, args)
-	} else {
-		args := []string{"--leave-comments", "--initial-header-level=2"}
-		result = externallyRenderContent(ctx, path, args)
-	}
-	// TODO(bep) check if rst2html has a body only option.
-	bodyStart := bytes.Index(result, []byte("<body>\n"))
-	if bodyStart < 0 {
-		bodyStart = -7 //compensate for length
-	}
-
-	bodyEnd := bytes.Index(result, []byte("\n</body>"))
-	if bodyEnd < 0 || bodyEnd >= len(result) {
-		bodyEnd = len(result) - 1
-		if bodyEnd < 0 {
-			bodyEnd = 0
+	out, err := shimgo.ConvertFromRst(cleanContent)
+	if out == nil {
+		if err != nil {
+			jww.ERROR.Printf("problem converting %s to rst; dependencies (docutils; flask) may not be installed (%v)",
+				ctx.DocumentName, err)
+			return nil
 		}
+
+		jww.ERROR.Printf("unknown error converting rst; %s not rendered", ctx.DocumentName)
+		return nil
 	}
 
-	return result[bodyStart+7 : bodyEnd]
+	if err != nil {
+		jww.ERROR.Printf("found rst error: %s:%v", ctx.DocumentName, err)
+	}
+
+	return out
 }
 
 // getPandocContent calls pandoc as an external helper to convert pandoc markdown to HTML.
