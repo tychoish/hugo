@@ -37,6 +37,7 @@ import (
 	"github.com/gohugoio/hugo/helpers"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/tychoish/shimgo"
 )
 
 const (
@@ -294,9 +295,148 @@ date: '2013-10-15T06:16:13'
 UTF8 Page With Date`
 )
 
-func checkPageTitle(t *testing.T, page page.Page, title string) {
-	if page.Title() != title {
-		t.Fatalf("Page title is: %s.  Expected %s", page.Title(), title)
+var pageWithVariousFrontmatterTypes = `+++
+a_string = "bar"
+an_integer = 1
+a_float = 1.3
+a_bool = false
+a_date = 1979-05-27T07:32:00Z
+
+[a_table]
+a_key = "a_value"
++++
+Front Matter with various frontmatter types`
+
+var pageWithCalendarYAMLFrontmatter = `---
+type: calendar
+weeks:
+  -
+    start: "Jan 5"
+    days:
+      - activity: class
+        room: EN1000
+      - activity: lab
+      - activity: class
+      - activity: lab
+      - activity: class
+  -
+    start: "Jan 12"
+    days:
+      - activity: class
+      - activity: lab
+      - activity: class
+      - activity: lab
+      - activity: exam
+---
+
+Hi.
+`
+
+var pageWithCalendarJSONFrontmatter = `{
+  "type": "calendar",
+  "weeks": [
+    {
+      "start": "Jan 5",
+      "days": [
+        { "activity": "class", "room": "EN1000" },
+        { "activity": "lab" },
+        { "activity": "class" },
+        { "activity": "lab" },
+        { "activity": "class" }
+      ]
+    },
+    {
+      "start": "Jan 12",
+      "days": [
+        { "activity": "class" },
+        { "activity": "lab" },
+        { "activity": "class" },
+        { "activity": "lab" },
+        { "activity": "exam" }
+      ]
+    }
+  ]
+}
+
+Hi.
+`
+
+var pageWithCalendarTOMLFrontmatter = `+++
+type = "calendar"
+
+[[weeks]]
+start = "Jan 5"
+
+[[weeks.days]]
+activity = "class"
+room = "EN1000"
+
+[[weeks.days]]
+activity = "lab"
+
+[[weeks.days]]
+activity = "class"
+
+[[weeks.days]]
+activity = "lab"
+
+[[weeks.days]]
+activity = "class"
+
+[[weeks]]
+start = "Jan 12"
+
+[[weeks.days]]
+activity = "class"
+
+[[weeks.days]]
+activity = "lab"
+
+[[weeks.days]]
+activity = "class"
+
+[[weeks.days]]
+activity = "lab"
+
+[[weeks.days]]
+activity = "exam"
++++
+
+Hi.
+`
+
+func checkError(t *testing.T, err error, expected string) {
+	if err == nil {
+		t.Fatalf("err is nil.  Expected: %s", expected)
+	}
+	if !strings.Contains(err.Error(), expected) {
+		t.Errorf("err.Error() returned: '%s'.  Expected: '%s'", err.Error(), expected)
+	}
+}
+
+func TestMain(m *testing.M) {
+	code := m.Run()
+	shimgo.Cleanup()
+	os.Exit(code)
+}
+
+func TestDegenerateEmptyPageZeroLengthName(t *testing.T) {
+	t.Parallel()
+	s := newTestSite(t)
+	_, err := s.NewPage("")
+	if err == nil {
+		t.Fatalf("A zero length page name must return an error")
+	}
+
+	checkError(t, err, "Zero length page name")
+}
+
+func TestDegenerateEmptyPage(t *testing.T) {
+	t.Parallel()
+	s := newTestSite(t)
+	_, err := s.newPageFrom(strings.NewReader(emptyPage), "test")
+	if err != nil {
+		t.Fatalf("Empty files should not trigger an error. Should be able to touch a file while watching without erroring out.")
 	}
 }
 
@@ -524,7 +664,6 @@ date: 2018-01-15
 	assert.Equal(2017, s.getPage("/no-index").Date().Year())
 	assert.True(s.getPage("/with-index-no-date").Date().IsZero())
 	assert.Equal(2018, s.getPage("/with-index-date").Date().Year())
-
 }
 
 func TestCreateNewPage(t *testing.T) {

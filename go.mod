@@ -53,6 +53,7 @@ require (
 	github.com/spf13/viper v1.4.0
 	github.com/stretchr/testify v1.3.0
 	github.com/tdewolff/minify/v2 v2.3.7
+	github.com/tychoish/shimgo v0.0.0-20181231152250-dadfa3df4ee9
 	github.com/yosssi/ace v0.0.5
 	go.opencensus.io v0.22.0 // indirect
 	gocloud.dev v0.15.0
