@@ -17,6 +17,7 @@ import (
 	"os"
 
 	"github.com/gohugoio/hugo/hugolib/paths"
+	"github.com/tychoish/shimgo"
 
 	"github.com/gohugoio/hugo/common/hugo"
 	"github.com/gohugoio/hugo/common/loggers"
@@ -62,6 +63,7 @@ func (b *commandsBuilder) addAll() *commandsBuilder {
 func (b *commandsBuilder) build() *hugoCmd {
 	h := b.newHugoCmd()
 	addCommands(h.getCommand(), b.commands...)
+
 	return h
 }
 
@@ -185,6 +187,10 @@ Complete documentation is available at http://gohugo.io/.`,
 
 	cc.cmd.SetGlobalNormalizationFunc(helpers.NormalizeHugoFlags)
 	cc.cmd.SilenceUsage = true
+
+	cc.cmd.PostRun = func(_ *cobra.Command, _ []string) {
+		shimgo.Cleanup()
+	}
 
 	return cc
 }

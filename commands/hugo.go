@@ -25,6 +25,7 @@ import (
 
 	"github.com/gohugoio/hugo/common/hugo"
 	"github.com/pkg/errors"
+	"github.com/tychoish/shimgo"
 
 	"github.com/gohugoio/hugo/common/herrors"
 	"github.com/gohugoio/hugo/common/loggers"
@@ -80,8 +81,12 @@ func (r Response) IsUserError() bool {
 // The args are usually filled with os.Args[1:].
 func Execute(args []string) Response {
 	hugoCmd := newCommandsBuilder().addAll().build()
+
 	cmd := hugoCmd.getCommand()
 	cmd.SetArgs(args)
+	cmd.PostRun = func(_ *cobra.Command, _ []string) {
+		shimgo.Cleanup()
+	}
 
 	c, err := cmd.ExecuteC()
 
