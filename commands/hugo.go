@@ -647,7 +647,7 @@ func (c *commandeer) timeTrack(start time.Time, name string) {
 		return
 	}
 	elapsed := time.Since(start)
-	c.logger.FEEDBACK.Printf("%s in %v ms", name, int(1000*elapsed.Seconds()))
+	c.Logger.FEEDBACK.Printf("%s in %s", name, elapsed.Round(10*time.Millisecond))
 }
 
 // getDirList provides NewWatcher() with a list of directories to watch for changes.
