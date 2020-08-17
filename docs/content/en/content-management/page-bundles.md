@@ -18,8 +18,8 @@ Page Bundles are a way to group [Page Resources](/content-management/page-resour
 
 A Page Bundle can be one of:
 
--   Leaf Bundle (leaf means it has no children)
--   Branch Bundle (home page, section, taxonomy terms, taxonomy list)
+- Leaf Bundle (leaf means it has no children)
+- Branch Bundle (home page, section, taxonomy terms, taxonomy list)
 
 |                                     | Leaf Bundle                                              | Branch Bundle                                                                                                                                                                                                      |
 |-------------------------------------|----------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------  |
@@ -72,6 +72,14 @@ about
 my-post
 : This leaf bundle has the `index.md`, two other content
     Markdown files and two image files.
+
+image1
+: This image is a page resource of `my-post`
+    and only available in `my-post/index.md` resources.
+
+image2
+: This image is a page resource of `my-post`
+    and only available in `my-post/index.md` resources.
 
 my-other-post
 : This leaf bundle has only the `index.md`.

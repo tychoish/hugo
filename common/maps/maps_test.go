@@ -14,14 +14,14 @@
 package maps
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	qt "github.com/frankban/quicktest"
 )
 
 func TestToLower(t *testing.T) {
-
 	tests := []struct {
 		input    map[string]interface{}
 		expected map[string]interface{}
@@ -30,7 +30,7 @@ func TestToLower(t *testing.T) {
 			map[string]interface{}{
 				"abC": 32,
 			},
-			map[string]interface{}{
+			Params{
 				"abc": 32,
 			},
 		},
@@ -48,16 +48,16 @@ func TestToLower(t *testing.T) {
 					"J": 25,
 				},
 			},
-			map[string]interface{}{
+			Params{
 				"abc": 32,
-				"def": map[string]interface{}{
+				"def": Params{
 					"23": "A value",
-					"24": map[string]interface{}{
+					"24": Params{
 						"abcde": "A value",
 						"efghi": "Another value",
 					},
 				},
-				"ghi": map[string]interface{}{
+				"ghi": Params{
 					"j": 25,
 				},
 			},
@@ -65,16 +65,18 @@ func TestToLower(t *testing.T) {
 	}
 
 	for i, test := range tests {
-		// ToLower modifies input.
-		ToLower(test.input)
-		if !reflect.DeepEqual(test.expected, test.input) {
-			t.Errorf("[%d] Expected\n%#v, got\n%#v\n", i, test.expected, test.input)
-		}
+		t.Run(fmt.Sprint(i), func(t *testing.T) {
+			// ToLower modifies input.
+			ToLower(test.input)
+			if !reflect.DeepEqual(test.expected, test.input) {
+				t.Errorf("[%d] Expected\n%#v, got\n%#v\n", i, test.expected, test.input)
+			}
+		})
 	}
 }
 
 func TestRenameKeys(t *testing.T) {
-	assert := require.New(t)
+	c := qt.New(t)
 
 	m := map[string]interface{}{
 		"a":    32,
@@ -112,7 +114,7 @@ func TestRenameKeys(t *testing.T) {
 		"{ren1,sub/*/ren1}", "new1",
 		"{Ren2,sub/ren2}", "new2",
 	)
-	assert.NoError(err)
+	c.Assert(err, qt.IsNil)
 
 	renamer.Rename(m)
 

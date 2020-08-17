@@ -26,9 +26,36 @@ import (
 	"github.com/gohugoio/hugo/resources/resource"
 )
 
+type treeRefProvider interface {
+	getTreeRef() *contentTreeRef
+}
+
+func (p *pageCommon) getTreeRef() *contentTreeRef {
+	return p.treeRef
+}
+
+type nextPrevProvider interface {
+	getNextPrev() *nextPrev
+}
+
+func (p *pageCommon) getNextPrev() *nextPrev {
+	return p.posNextPrev
+}
+
+type nextPrevInSectionProvider interface {
+	getNextPrevInSection() *nextPrev
+}
+
+func (p *pageCommon) getNextPrevInSection() *nextPrev {
+	return p.posNextPrevSection
+}
+
 type pageCommon struct {
 	s *Site
 	m *pageMeta
+
+	bucket  *pagesMapBucket
+	treeRef *contentTreeRef
 
 	// Laziliy initialized dependencies.
 	init *lazy.Init
@@ -59,7 +86,8 @@ type pageCommon struct {
 	resource.ResourceDataProvider
 	resource.ResourceMetaProvider
 	resource.ResourceParamsProvider
-	resource.ResourceTypesProvider
+	resource.ResourceTypeProvider
+	resource.MediaTypeProvider
 	resource.TranslationKeyProvider
 	compare.Eqer
 
@@ -101,17 +129,19 @@ type pageCommon struct {
 	translationKey     string
 	translationKeyInit sync.Once
 
-	// Will only be set for sections and regular pages.
+	// Will only be set for bundled pages.
 	parent *pageState
-
-	// Will only be set for section pages and the home page.
-	subSections page.Pages
 
 	// Set in fast render mode to force render a given page.
 	forceRender bool
 }
 
 type pagePages struct {
-	pages     page.Pages
 	pagesInit sync.Once
+	pages     page.Pages
+
+	regularPagesInit          sync.Once
+	regularPages              page.Pages
+	regularPagesRecursiveInit sync.Once
+	regularPagesRecursive     page.Pages
 }

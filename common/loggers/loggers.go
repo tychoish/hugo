@@ -15,11 +15,14 @@ package loggers
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
 	"os"
 	"regexp"
+	"runtime"
+	"time"
 
 	"github.com/gohugoio/hugo/common/terminal"
 
@@ -39,10 +42,33 @@ func init() {
 // Logger wraps a *loggers.Logger and some other related logging state.
 type Logger struct {
 	*jww.Notepad
+
+	// The writer that represents stdout.
+	// Will be ioutil.Discard when in quiet mode.
+	Out io.Writer
+
 	ErrorCounter *jww.Counter
+	WarnCounter  *jww.Counter
 
 	// This is only set in server mode.
 	errors *bytes.Buffer
+}
+
+// PrintTimerIfDelayed prints a time statement to the FEEDBACK logger
+// if considerable time is spent.
+func (l *Logger) PrintTimerIfDelayed(start time.Time, name string) {
+	elapsed := time.Since(start)
+	milli := int(1000 * elapsed.Seconds())
+	if milli < 500 {
+		return
+	}
+	l.FEEDBACK.Printf("%s in %v ms", name, milli)
+}
+
+func (l *Logger) PrintTimer(start time.Time, name string) {
+	elapsed := time.Since(start)
+	milli := int(1000 * elapsed.Seconds())
+	l.FEEDBACK.Printf("%s in %v ms", name, milli)
 }
 
 func (l *Logger) Errors() string {
@@ -141,11 +167,32 @@ func getLogWriters(outHandle, logHandle io.Writer) (io.Writer, io.Writer) {
 
 }
 
+type fatalLogWriter int
+
+func (s fatalLogWriter) Write(p []byte) (n int, err error) {
+	trace := make([]byte, 1500)
+	runtime.Stack(trace, true)
+	fmt.Printf("\n===========\n\n%s\n", trace)
+	os.Exit(-1)
+
+	return 0, nil
+}
+
+var fatalLogListener = func(t jww.Threshold) io.Writer {
+	if t != jww.LevelError {
+		// Only interested in ERROR
+		return nil
+	}
+
+	return new(fatalLogWriter)
+}
+
 func newLogger(stdoutThreshold, logThreshold jww.Threshold, outHandle, logHandle io.Writer, saveErrors bool) *Logger {
 	errorCounter := &jww.Counter{}
+	warnCounter := &jww.Counter{}
 	outHandle, logHandle = getLogWriters(outHandle, logHandle)
 
-	listeners := []jww.LogListener{jww.LogCounter(errorCounter, jww.LevelError)}
+	listeners := []jww.LogListener{jww.LogCounter(errorCounter, jww.LevelError), jww.LogCounter(warnCounter, jww.LevelWarn)}
 	var errorBuff *bytes.Buffer
 	if saveErrors {
 		errorBuff = new(bytes.Buffer)
@@ -154,7 +201,6 @@ func newLogger(stdoutThreshold, logThreshold jww.Threshold, outHandle, logHandle
 				// Only interested in ERROR
 				return nil
 			}
-
 			return errorBuff
 		}
 
@@ -163,7 +209,9 @@ func newLogger(stdoutThreshold, logThreshold jww.Threshold, outHandle, logHandle
 
 	return &Logger{
 		Notepad:      jww.NewNotepad(stdoutThreshold, logThreshold, outHandle, logHandle, "", log.Ldate|log.Ltime, listeners...),
+		Out:          outHandle,
 		ErrorCounter: errorCounter,
+		WarnCounter:  warnCounter,
 		errors:       errorBuff,
 	}
 }

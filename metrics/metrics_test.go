@@ -14,16 +14,17 @@
 package metrics
 
 import (
+	"html/template"
 	"strings"
 	"testing"
 
 	"github.com/gohugoio/hugo/resources/page"
 
-	"github.com/stretchr/testify/require"
+	qt "github.com/frankban/quicktest"
 )
 
 func TestSimilarPercentage(t *testing.T) {
-	assert := require.New(t)
+	c := qt.New(t)
 
 	sentence := "this is some words about nothing, Hugo!"
 	words := strings.Fields(sentence)
@@ -32,20 +33,30 @@ func TestSimilarPercentage(t *testing.T) {
 	}
 	sentenceReversed := strings.Join(words, " ")
 
-	assert.Equal(100, howSimilar("Hugo Rules", "Hugo Rules"))
-	assert.Equal(50, howSimilar("Hugo Rules", "Hugo Rocks"))
-	assert.Equal(66, howSimilar("The Hugo Rules", "The Hugo Rocks"))
-	assert.Equal(66, howSimilar("The Hugo Rules", "The Hugo"))
-	assert.Equal(66, howSimilar("The Hugo", "The Hugo Rules"))
-	assert.Equal(0, howSimilar("Totally different", "Not Same"))
-	assert.Equal(14, howSimilar(sentence, sentenceReversed))
+	c.Assert(howSimilar("Hugo Rules", "Hugo Rules"), qt.Equals, 100)
+	c.Assert(howSimilar("Hugo Rules", "Hugo Rocks"), qt.Equals, 50)
+	c.Assert(howSimilar("The Hugo Rules", "The Hugo Rocks"), qt.Equals, 66)
+	c.Assert(howSimilar("The Hugo Rules", "The Hugo"), qt.Equals, 66)
+	c.Assert(howSimilar("The Hugo", "The Hugo Rules"), qt.Equals, 66)
+	c.Assert(howSimilar("Totally different", "Not Same"), qt.Equals, 0)
+	c.Assert(howSimilar(sentence, sentenceReversed), qt.Equals, 14)
+	c.Assert(howSimilar(template.HTML("Hugo Rules"), template.HTML("Hugo Rules")), qt.Equals, 100)
+	c.Assert(howSimilar(map[string]interface{}{"a": 32, "b": 33}, map[string]interface{}{"a": 32, "b": 33}), qt.Equals, 100)
+	c.Assert(howSimilar(map[string]interface{}{"a": 32, "b": 33}, map[string]interface{}{"a": 32, "b": 34}), qt.Equals, 0)
 
 }
 
+type testStruct struct {
+	Name string
+}
+
 func TestSimilarPercentageNonString(t *testing.T) {
-	assert := require.New(t)
-	assert.Equal(100, howSimilar(page.NopPage, page.NopPage))
-	assert.Equal(90, howSimilar(page.Pages{}, page.Pages{}))
+	c := qt.New(t)
+	c.Assert(howSimilar(page.NopPage, page.NopPage), qt.Equals, 100)
+	c.Assert(howSimilar(page.Pages{}, page.Pages{}), qt.Equals, 90)
+	c.Assert(howSimilar(testStruct{Name: "A"}, testStruct{Name: "B"}), qt.Equals, 0)
+	c.Assert(howSimilar(testStruct{Name: "A"}, testStruct{Name: "A"}), qt.Equals, 100)
+
 }
 
 func BenchmarkHowSimilar(b *testing.B) {

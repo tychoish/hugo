@@ -28,10 +28,8 @@ var (
 
 // The content related items on a Page.
 type pageContent struct {
-	renderable bool
 	selfLayout string
-
-	truncated bool
+	truncated  bool
 
 	cmap *pageContentMap
 
@@ -53,7 +51,7 @@ func (p pageContent) contentToRender(renderedShortcodes map[string]string) []byt
 		case pageContentReplacement:
 			c = append(c, v.val...)
 		case *shortcode:
-			if !p.renderable || !v.insertPlaceholder() {
+			if !v.insertPlaceholder() {
 				// Insert the rendered shortcode.
 				renderedShortcode, found := renderedShortcodes[v.placeholder]
 				if !found {
@@ -70,7 +68,7 @@ func (p pageContent) contentToRender(renderedShortcodes map[string]string) []byt
 
 			}
 		default:
-			panic(fmt.Sprintf("unkown item type %T", it))
+			panic(fmt.Sprintf("unknown item type %T", it))
 		}
 	}
 

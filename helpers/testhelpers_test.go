@@ -1,15 +1,18 @@
 package helpers
 
 import (
+	"github.com/gohugoio/hugo/common/loggers"
+	"github.com/spf13/afero"
 	"github.com/spf13/viper"
 
 	"github.com/gohugoio/hugo/hugofs"
 	"github.com/gohugoio/hugo/langs"
+	"github.com/gohugoio/hugo/modules"
 )
 
 func newTestPathSpec(fs *hugofs.Fs, v *viper.Viper) *PathSpec {
 	l := langs.NewDefaultLanguage(v)
-	ps, _ := NewPathSpec(fs, l)
+	ps, _ := NewPathSpec(fs, l, nil)
 	return ps
 }
 
@@ -42,12 +45,20 @@ func newTestCfg() *viper.Viper {
 	v.Set("resourceDir", "resources")
 	v.Set("publishDir", "public")
 	v.Set("archetypeDir", "archetypes")
+	langs.LoadLanguageSettings(v, nil)
+	langs.LoadLanguageSettings(v, nil)
+	mod, err := modules.CreateProjectModule(v)
+	if err != nil {
+		panic(err)
+	}
+	v.Set("allModules", modules.Modules{mod})
+
 	return v
 }
 
 func newTestContentSpec() *ContentSpec {
 	v := viper.New()
-	spec, err := NewContentSpec(v)
+	spec, err := NewContentSpec(v, loggers.NewErrorLogger(), afero.NewMemMapFs())
 	if err != nil {
 		panic(err)
 	}

@@ -15,44 +15,66 @@ package hugolib
 
 import (
 	"testing"
-
-	"github.com/stretchr/testify/require"
 )
 
-// Just some simple test of the embedded templates to avoid
-// https://github.com/gohugoio/hugo/issues/4757 and similar.
-// TODO(bep) fix me https://github.com/gohugoio/hugo/issues/5926
-func _TestEmbeddedTemplates(t *testing.T) {
-	t.Parallel()
+func TestInternalTemplatesImage(t *testing.T) {
+	config := `
+baseURL = "https://example.org"
 
-	assert := require.New(t)
-	assert.True(true)
+[params]
+images=["siteimg1.jpg", "siteimg2.jpg"]
 
-	home := []string{"index.html", `
-GA:
-{{ template "_internal/google_analytics.html" . }}
+`
+	b := newTestSitesBuilder(t).WithConfigFile("toml", config)
 
-GA async:
+	b.WithContent("mybundle/index.md", `---
+title: My Bundle
+---
+`)
 
-{{ template "_internal/google_analytics_async.html" . }}
+	b.WithContent("mypage.md", `---
+title: My Page
+images: ["pageimg1.jpg", "pageimg2.jpg"]
+---
+`)
 
-Disqus:
+	b.WithContent("mysite.md", `---
+title: My Site
+---
+`)
 
-{{ template "_internal/disqus.html" . }}
+	b.WithTemplatesAdded("_default/single.html", `
 
-`}
+{{ template "_internal/twitter_cards.html" . }}
+{{ template "_internal/opengraph.html" . }}
+{{ template "_internal/schema.html" . }}
 
-	b := newTestSitesBuilder(t)
-	b.WithSimpleConfigFile().WithTemplatesAdded(home...)
+`)
 
+	b.WithSunset("content/mybundle/featured-sunset.jpg")
 	b.Build(BuildCfg{})
 
-	// Gheck GA regular and async
-	b.AssertFileContent("public/index.html",
-		"'anonymizeIp', true",
-		"'script','https://www.google-analytics.com/analytics.js','ga');\n\tga('create', 'ga_id', 'auto')",
-		"<script async src='https://www.google-analytics.com/analytics.js'>")
+	b.AssertFileContent("public/mybundle/index.html", `
+<meta name="twitter:image" content="https://example.org/mybundle/featured-sunset.jpg"/>
+<meta name="twitter:title" content="My Bundle"/>
+<meta property="og:title" content="My Bundle" />
+<meta property="og:url" content="https://example.org/mybundle/" />
+<meta property="og:image" content="https://example.org/mybundle/featured-sunset.jpg"/>
+<meta itemprop="name" content="My Bundle">
+<meta itemprop="image" content="https://example.org/mybundle/featured-sunset.jpg">
 
-	// Disqus
-	b.AssertFileContent("public/index.html", "\"disqus_shortname\" + '.disqus.com/embed.js';")
+`)
+	b.AssertFileContent("public/mypage/index.html", `
+<meta name="twitter:image" content="https://example.org/pageimg1.jpg"/>
+<meta property="og:image" content="https://example.org/pageimg1.jpg" />
+<meta property="og:image" content="https://example.org/pageimg2.jpg" />
+<meta itemprop="image" content="https://example.org/pageimg1.jpg">
+<meta itemprop="image" content="https://example.org/pageimg2.jpg">        
+`)
+	b.AssertFileContent("public/mysite/index.html", `
+<meta name="twitter:image" content="https://example.org/siteimg1.jpg"/>
+<meta property="og:image" content="https://example.org/siteimg1.jpg"/>
+<meta itemprop="image" content="https://example.org/siteimg1.jpg"/>
+`)
+
 }

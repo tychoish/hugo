@@ -16,13 +16,28 @@ package hugolib
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"runtime/trace"
-	"sort"
+	"strings"
+
+	"github.com/gohugoio/hugo/publisher"
+
+	"github.com/gohugoio/hugo/hugofs"
+
+	"github.com/gohugoio/hugo/common/para"
+	"github.com/gohugoio/hugo/config"
+	"github.com/gohugoio/hugo/resources/postpub"
+
+	"github.com/spf13/afero"
+
+	"github.com/gohugoio/hugo/resources/resource"
 
 	"github.com/gohugoio/hugo/output"
 
-	"errors"
+	"github.com/pkg/errors"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/gohugoio/hugo/helpers"
@@ -31,6 +46,7 @@ import (
 // Build builds all sites. If filesystem events are provided,
 // this is considered to be a potential partial rebuild.
 func (h *HugoSites) Build(config BuildCfg, events ...fsnotify.Event) error {
+
 	if h.running {
 		// Make sure we don't trigger rebuilds in parallel.
 		h.runningMu.Lock()
@@ -63,41 +79,47 @@ func (h *HugoSites) Build(config BuildCfg, events ...fsnotify.Event) error {
 		h.Metrics.Reset()
 	}
 
+	h.testCounters = config.testCounters
+
 	// Need a pointer as this may be modified.
 	conf := &config
 
 	if conf.whatChanged == nil {
 		// Assume everything has changed
-		conf.whatChanged = &whatChanged{source: true, other: true}
+		conf.whatChanged = &whatChanged{source: true}
 	}
 
 	var prepareErr error
 
 	if !config.PartialReRender {
 		prepare := func() error {
-			for _, s := range h.Sites {
-				s.Deps.BuildStartListeners.Notify()
-			}
+			init := func(conf *BuildCfg) error {
+				for _, s := range h.Sites {
+					s.Deps.BuildStartListeners.Notify()
+				}
 
-			if len(events) > 0 {
-				// Rebuild
-				if err := h.initRebuild(conf); err != nil {
-					return err
+				if len(events) > 0 {
+					// Rebuild
+					if err := h.initRebuild(conf); err != nil {
+						return errors.Wrap(err, "initRebuild")
+					}
+				} else {
+					if err := h.initSites(conf); err != nil {
+						return errors.Wrap(err, "initSites")
+					}
 				}
-			} else {
-				if err := h.initSites(conf); err != nil {
-					return err
-				}
+
+				return nil
 			}
 
 			var err error
 
 			f := func() {
-				err = h.process(conf, events...)
+				err = h.process(conf, init, events...)
 			}
 			trace.WithRegion(ctx, "process", f)
 			if err != nil {
-				return err
+				return errors.Wrap(err, "process")
 			}
 
 			f = func() {
@@ -128,6 +150,10 @@ func (h *HugoSites) Build(config BuildCfg, events ...fsnotify.Event) error {
 		}
 		trace.WithRegion(ctx, "render", f)
 		if err != nil {
+			h.SendError(err)
+		}
+
+		if err = h.postProcess(); err != nil {
 			h.SendError(err)
 		}
 	}
@@ -195,7 +221,7 @@ func (h *HugoSites) initRebuild(config *BuildCfg) error {
 	}
 
 	for _, s := range h.Sites {
-		s.resetBuildState()
+		s.resetBuildState(config.whatChanged.source)
 	}
 
 	h.reset(config)
@@ -205,7 +231,7 @@ func (h *HugoSites) initRebuild(config *BuildCfg) error {
 	return nil
 }
 
-func (h *HugoSites) process(config *BuildCfg, events ...fsnotify.Event) error {
+func (h *HugoSites) process(config *BuildCfg, init func(config *BuildCfg) error, events ...fsnotify.Event) error {
 	// We should probably refactor the Site and pull up most of the logic from there to here,
 	// but that seems like a daunting task.
 	// So for now, if there are more than one site (language),
@@ -215,16 +241,14 @@ func (h *HugoSites) process(config *BuildCfg, events ...fsnotify.Event) error {
 
 	if len(events) > 0 {
 		// This is a rebuild
-		changed, err := firstSite.processPartial(events)
-		config.whatChanged = &changed
-		return err
+		return firstSite.processPartial(config, init, events)
 	}
 
 	return firstSite.process(*config)
 
 }
 
-func (h *HugoSites) assemble(config *BuildCfg) error {
+func (h *HugoSites) assemble(bcfg *BuildCfg) error {
 
 	if len(h.Sites) > 1 {
 		// The first is initialized during process; initialize the rest
@@ -235,26 +259,16 @@ func (h *HugoSites) assemble(config *BuildCfg) error {
 		}
 	}
 
+	if !bcfg.whatChanged.source {
+		return nil
+	}
+
+	if err := h.getContentMaps().AssemblePages(); err != nil {
+		return err
+	}
+
 	if err := h.createPageCollections(); err != nil {
 		return err
-	}
-
-	if config.whatChanged.source {
-		for _, s := range h.Sites {
-			if err := s.assembleTaxonomies(); err != nil {
-				return err
-			}
-		}
-	}
-
-	// Create pagexs for the section pages etc. without content file.
-	if err := h.createMissingPages(); err != nil {
-		return err
-	}
-
-	for _, s := range h.Sites {
-		s.setupSitePages()
-		sort.Stable(s.workAllPages)
 	}
 
 	return nil
@@ -262,12 +276,20 @@ func (h *HugoSites) assemble(config *BuildCfg) error {
 }
 
 func (h *HugoSites) render(config *BuildCfg) error {
+	if _, err := h.init.layouts.Do(); err != nil {
+		return err
+	}
+
 	siteRenderContext := &siteRenderContext{cfg: config, multihost: h.multihost}
 
 	if !config.PartialReRender {
 		h.renderFormats = output.Formats{}
-		for _, s := range h.Sites {
+		h.withSite(func(s *Site) error {
 			s.initRenderFormats()
+			return nil
+		})
+
+		for _, s := range h.Sites {
 			h.renderFormats = append(h.renderFormats, s.renderFormats...)
 		}
 	}
@@ -283,11 +305,6 @@ func (h *HugoSites) render(config *BuildCfg) error {
 			case <-h.Done():
 				return nil
 			default:
-				// For the non-renderable pages, we use the content iself as
-				// template and we may have to re-parse and execute it for
-				// each output format.
-				h.TemplateHandler().RebuildClone()
-
 				for _, s2 := range h.Sites {
 					// We render site by site, but since the content is lazily rendered
 					// and a site can "borrow" content from other sites, every site
@@ -317,10 +334,150 @@ func (h *HugoSites) render(config *BuildCfg) error {
 	}
 
 	if !config.SkipRender {
-		if err := h.renderCrossSitesArtifacts(); err != nil {
+		if err := h.renderCrossSitesSitemap(); err != nil {
+			return err
+		}
+		if err := h.renderCrossSitesRobotsTXT(); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func (h *HugoSites) postProcess() error {
+	// Make sure to write any build stats to disk first so it's available
+	// to the post processors.
+	if err := h.writeBuildStats(); err != nil {
+		return err
+	}
+
+	var toPostProcess []resource.OriginProvider
+	for _, s := range h.Sites {
+		for _, v := range s.ResourceSpec.PostProcessResources {
+			toPostProcess = append(toPostProcess, v)
+		}
+	}
+
+	if len(toPostProcess) == 0 {
+		return nil
+	}
+
+	workers := para.New(config.GetNumWorkerMultiplier())
+	g, _ := workers.Start(context.Background())
+
+	handleFile := func(filename string) error {
+
+		content, err := afero.ReadFile(h.BaseFs.PublishFs, filename)
+		if err != nil {
+			return err
+		}
+
+		k := 0
+		changed := false
+
+		for {
+			l := bytes.Index(content[k:], []byte(postpub.PostProcessPrefix))
+			if l == -1 {
+				break
+			}
+			m := bytes.Index(content[k+l:], []byte(postpub.PostProcessSuffix)) + len(postpub.PostProcessSuffix)
+
+			low, high := k+l, k+l+m
+
+			field := content[low:high]
+
+			forward := l + m
+
+			for i, r := range toPostProcess {
+				if r == nil {
+					panic(fmt.Sprintf("resource %d to post process is nil", i+1))
+				}
+				v, ok := r.GetFieldString(string(field))
+				if ok {
+					content = append(content[:low], append([]byte(v), content[high:]...)...)
+					changed = true
+					forward = len(v)
+					break
+				}
+			}
+
+			k += forward
+		}
+
+		if changed {
+			return afero.WriteFile(h.BaseFs.PublishFs, filename, content, 0666)
+		}
+
+		return nil
+
+	}
+
+	_ = afero.Walk(h.BaseFs.PublishFs, "", func(path string, info os.FileInfo, err error) error {
+		if info == nil || info.IsDir() {
+			return nil
+		}
+
+		if !strings.HasSuffix(path, "html") {
+			return nil
+		}
+
+		g.Run(func() error {
+			return handleFile(path)
+		})
+
+		return nil
+	})
+
+	// Prepare for a new build.
+	for _, s := range h.Sites {
+		s.ResourceSpec.PostProcessResources = make(map[string]postpub.PostPublishedResource)
+	}
+
+	return g.Wait()
+
+}
+
+type publishStats struct {
+	CSSClasses string `json:"cssClasses"`
+}
+
+func (h *HugoSites) writeBuildStats() error {
+	if !h.ResourceSpec.BuildConfig.WriteStats {
+		return nil
+	}
+
+	htmlElements := &publisher.HTMLElements{}
+	for _, s := range h.Sites {
+		stats := s.publisher.PublishStats()
+		htmlElements.Merge(stats.HTMLElements)
+	}
+
+	htmlElements.Sort()
+
+	stats := publisher.PublishStats{
+		HTMLElements: *htmlElements,
+	}
+
+	js, err := json.MarshalIndent(stats, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	filename := filepath.Join(h.WorkingDir, "hugo_stats.json")
+
+	// Make sure it's always written to the OS fs.
+	if err := afero.WriteFile(hugofs.Os, filename, js, 0666); err != nil {
+		return err
+	}
+
+	// Write to the destination, too, if a mem fs is in play.
+	if h.Fs.Source != hugofs.Os {
+		if err := afero.WriteFile(h.Fs.Destination, filename, js, 0666); err != nil {
+			return err
+		}
+	}
+
+	return nil
+
 }

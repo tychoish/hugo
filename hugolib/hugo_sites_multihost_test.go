@@ -5,13 +5,13 @@ import (
 
 	"github.com/gohugoio/hugo/resources/page"
 
-	"github.com/stretchr/testify/require"
+	qt "github.com/frankban/quicktest"
 )
 
 func TestMultihosts(t *testing.T) {
 	t.Parallel()
 
-	assert := require.New(t)
+	c := qt.New(t)
 
 	var configTemplate = `
 paginate = 1
@@ -19,6 +19,7 @@ disablePathToLower = true
 defaultContentLanguage = "fr"
 defaultContentLanguageInSubdir = false
 staticDir = ["s1", "s2"]
+enableRobotsTXT = true
 
 [permalinks]
 other = "/somewhere/else/:filename"
@@ -58,9 +59,9 @@ languageName = "Nynorsk"
 	s1 := b.H.Sites[0]
 
 	s1h := s1.getPage(page.KindHome)
-	assert.True(s1h.IsTranslated())
-	assert.Len(s1h.Translations(), 2)
-	assert.Equal("https://example.com/docs/", s1h.Permalink())
+	c.Assert(s1h.IsTranslated(), qt.Equals, true)
+	c.Assert(len(s1h.Translations()), qt.Equals, 2)
+	c.Assert(s1h.Permalink(), qt.Equals, "https://example.com/docs/")
 
 	// For “regular multilingual” we kept the aliases pages with url in front matter
 	// as a literal value that we use as is.
@@ -69,9 +70,15 @@ languageName = "Nynorsk"
 	//
 	// check url in front matter:
 	pageWithURLInFrontMatter := s1.getPage(page.KindPage, "sect/doc3.en.md")
-	assert.NotNil(pageWithURLInFrontMatter)
-	assert.Equal("/docs/superbob/", pageWithURLInFrontMatter.RelPermalink())
+	c.Assert(pageWithURLInFrontMatter, qt.Not(qt.IsNil))
+	c.Assert(pageWithURLInFrontMatter.RelPermalink(), qt.Equals, "/docs/superbob/")
 	b.AssertFileContent("public/en/superbob/index.html", "doc3|Hello|en")
+
+	// the domain root is the language directory for each language, so the robots.txt is created in the language directories
+	b.AssertFileContent("public/en/robots.txt", "robots|en")
+	b.AssertFileContent("public/fr/robots.txt", "robots|fr")
+	b.AssertFileContent("public/nn/robots.txt", "robots|nn")
+	b.AssertFileDoesNotExist("public/robots.txt")
 
 	// check alias:
 	b.AssertFileContent("public/en/al/alias1/index.html", `content="0; url=https://example.com/docs/superbob/"`)
@@ -80,7 +87,7 @@ languageName = "Nynorsk"
 	s2 := b.H.Sites[1]
 
 	s2h := s2.getPage(page.KindHome)
-	assert.Equal("https://example.fr/", s2h.Permalink())
+	c.Assert(s2h.Permalink(), qt.Equals, "https://example.fr/")
 
 	b.AssertFileContent("public/fr/index.html", "French Home Page", "String Resource: /docs/text/pipes.txt")
 	b.AssertFileContent("public/fr/text/pipes.txt", "Hugo Pipes")
@@ -96,17 +103,17 @@ languageName = "Nynorsk"
 	// Check bundles
 
 	bundleEn := s1.getPage(page.KindPage, "bundles/b1/index.en.md")
-	require.NotNil(t, bundleEn)
-	require.Equal(t, "/docs/bundles/b1/", bundleEn.RelPermalink())
-	require.Equal(t, 1, len(bundleEn.Resources()))
+	c.Assert(bundleEn, qt.Not(qt.IsNil))
+	c.Assert(bundleEn.RelPermalink(), qt.Equals, "/docs/bundles/b1/")
+	c.Assert(len(bundleEn.Resources()), qt.Equals, 1)
 
 	b.AssertFileContent("public/en/bundles/b1/logo.png", "PNG Data")
 	b.AssertFileContent("public/en/bundles/b1/index.html", " image/png: /docs/bundles/b1/logo.png")
 
 	bundleFr := s2.getPage(page.KindPage, "bundles/b1/index.md")
-	require.NotNil(t, bundleFr)
-	require.Equal(t, "/bundles/b1/", bundleFr.RelPermalink())
-	require.Equal(t, 1, len(bundleFr.Resources()))
+	c.Assert(bundleFr, qt.Not(qt.IsNil))
+	c.Assert(bundleFr.RelPermalink(), qt.Equals, "/bundles/b1/")
+	c.Assert(len(bundleFr.Resources()), qt.Equals, 1)
 	b.AssertFileContent("public/fr/bundles/b1/logo.png", "PNG Data")
 	b.AssertFileContent("public/fr/bundles/b1/index.html", " image/png: /bundles/b1/logo.png")
 

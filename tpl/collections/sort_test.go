@@ -18,6 +18,8 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/gohugoio/hugo/common/maps"
+
 	"github.com/gohugoio/hugo/deps"
 )
 
@@ -45,6 +47,7 @@ func TestSort(t *testing.T) {
 	}{
 		{[]string{"class1", "class2", "class3"}, nil, "asc", []string{"class1", "class2", "class3"}},
 		{[]string{"class3", "class1", "class2"}, nil, "asc", []string{"class1", "class2", "class3"}},
+		{[]string{"CLASS3", "class1", "class2"}, nil, "asc", []string{"class1", "class2", "CLASS3"}},
 		// Issue 6023
 		{stringsSlice{"class3", "class1", "class2"}, nil, "asc", stringsSlice{"class1", "class2", "class3"}},
 
@@ -98,6 +101,20 @@ func TestSort(t *testing.T) {
 			"TstRp",
 			"asc",
 			[]*TstX{{A: "a", B: "b"}, {A: "c", B: "d"}, {A: "e", B: "f"}, {A: "g", B: "h"}, {A: "i", B: "j"}},
+		},
+		// Lower case Params, slice
+		{
+			[]TstParams{{params: maps.Params{"color": "indigo"}}, {params: maps.Params{"color": "blue"}}, {params: maps.Params{"color": "green"}}},
+			".Params.COLOR",
+			"asc",
+			[]TstParams{{params: maps.Params{"color": "blue"}}, {params: maps.Params{"color": "green"}}, {params: maps.Params{"color": "indigo"}}},
+		},
+		// Lower case Params, map
+		{
+			map[string]TstParams{"1": {params: maps.Params{"color": "indigo"}}, "2": {params: maps.Params{"color": "blue"}}, "3": {params: maps.Params{"color": "green"}}},
+			".Params.CoLoR",
+			"asc",
+			[]TstParams{{params: maps.Params{"color": "blue"}}, {params: maps.Params{"color": "green"}}, {params: maps.Params{"color": "indigo"}}},
 		},
 		// test map sorting by struct's method
 		{
@@ -201,6 +218,9 @@ func TestSort(t *testing.T) {
 				map[interface{}]interface{}{"Title": "Foo", "Weight": 10},
 			},
 		},
+		// test boolean values
+		{[]bool{false, true, false}, "value", "asc", []bool{false, false, true}},
+		{[]bool{false, true, false}, "value", "desc", []bool{true, false, false}},
 		// test error cases
 		{(*[]TstX)(nil), nil, "asc", false},
 		{TstX{A: "a", B: "b"}, nil, "asc", false},

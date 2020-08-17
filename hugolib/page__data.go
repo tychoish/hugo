@@ -35,27 +35,24 @@ func (p *pageData) Data() interface{} {
 		}
 
 		switch p.Kind() {
+		case page.KindTerm:
+			b := p.treeRef.n
+			name := b.viewInfo.name
+			termKey := b.viewInfo.termKey
+
+			taxonomy := p.s.Taxonomies()[name.plural].Get(termKey)
+
+			p.data[name.singular] = taxonomy
+			p.data["Singular"] = name.singular
+			p.data["Plural"] = name.plural
+			p.data["Term"] = b.viewInfo.term()
 		case page.KindTaxonomy:
-			termInfo := p.getTaxonomyNodeInfo()
-			pluralInfo := termInfo.parent
+			b := p.treeRef.n
+			name := b.viewInfo.name
 
-			singular := pluralInfo.singular
-			plural := pluralInfo.plural
-			term := termInfo.term
-			taxonomy := p.s.Taxonomies[plural].Get(termInfo.termKey)
-
-			p.data[singular] = taxonomy
-			p.data["Singular"] = singular
-			p.data["Plural"] = plural
-			p.data["Term"] = term
-		case page.KindTaxonomyTerm:
-			info := p.getTaxonomyNodeInfo()
-			plural := info.plural
-			singular := info.singular
-
-			p.data["Singular"] = singular
-			p.data["Plural"] = plural
-			p.data["Terms"] = p.s.Taxonomies[plural]
+			p.data["Singular"] = name.singular
+			p.data["Plural"] = name.plural
+			p.data["Terms"] = p.s.Taxonomies()[name.plural]
 			// keep the following just for legacy reasons
 			p.data["OrderedIndex"] = p.data["Terms"]
 			p.data["Index"] = p.data["Terms"]

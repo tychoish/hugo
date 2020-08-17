@@ -14,17 +14,17 @@
 package collections
 
 import (
-	"fmt"
-	"reflect"
+	"html/template"
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	qt "github.com/frankban/quicktest"
 )
 
 func TestAppend(t *testing.T) {
 	t.Parallel()
+	c := qt.New(t)
 
-	for i, test := range []struct {
+	for _, test := range []struct {
 		start    interface{}
 		addend   []interface{}
 		expected interface{}
@@ -32,6 +32,7 @@ func TestAppend(t *testing.T) {
 		{[]string{"a", "b"}, []interface{}{"c"}, []string{"a", "b", "c"}},
 		{[]string{"a", "b"}, []interface{}{"c", "d", "e"}, []string{"a", "b", "c", "d", "e"}},
 		{[]string{"a", "b"}, []interface{}{[]string{"c", "d", "e"}}, []string{"a", "b", "c", "d", "e"}},
+		{[]string{"a"}, []interface{}{"b", template.HTML("c")}, []interface{}{"a", "b", template.HTML("c")}},
 		{nil, []interface{}{"a", "b"}, []string{"a", "b"}},
 		{nil, []interface{}{nil}, []interface{}{nil}},
 		{[]interface{}{}, []interface{}{[]string{"c", "d", "e"}}, []string{"c", "d", "e"}},
@@ -59,20 +60,16 @@ func TestAppend(t *testing.T) {
 			false},
 	} {
 
-		errMsg := fmt.Sprintf("[%d]", i)
-
 		result, err := Append(test.start, test.addend...)
 
 		if b, ok := test.expected.(bool); ok && !b {
-			require.Error(t, err, errMsg)
+
+			c.Assert(err, qt.Not(qt.IsNil))
 			continue
 		}
 
-		require.NoError(t, err, errMsg)
-
-		if !reflect.DeepEqual(test.expected, result) {
-			t.Fatalf("%s got\n%T: %v\nexpected\n%T: %v", errMsg, result, result, test.expected, test.expected)
-		}
+		c.Assert(err, qt.IsNil)
+		c.Assert(result, qt.DeepEquals, test.expected)
 	}
 
 }

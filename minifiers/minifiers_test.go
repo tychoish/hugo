@@ -15,18 +15,21 @@ package minifiers
 
 import (
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
 
 	"github.com/gohugoio/hugo/media"
 
+	qt "github.com/frankban/quicktest"
 	"github.com/gohugoio/hugo/output"
-	"github.com/stretchr/testify/require"
+	"github.com/spf13/viper"
 )
 
 func TestNew(t *testing.T) {
-	assert := require.New(t)
-	m := New(media.DefaultTypes, output.DefaultFormats)
+	c := qt.New(t)
+	v := viper.New()
+	m, _ := New(media.DefaultTypes, output.DefaultFormats, v)
 
 	var rawJS string
 	var minJS string
@@ -66,15 +69,89 @@ func TestNew(t *testing.T) {
 	} {
 		var b bytes.Buffer
 
-		assert.NoError(m.Minify(test.tp, &b, strings.NewReader(test.rawString)))
-		assert.Equal(test.expectedMinString, b.String())
+		c.Assert(m.Minify(test.tp, &b, strings.NewReader(test.rawString)), qt.IsNil)
+		c.Assert(b.String(), qt.Equals, test.expectedMinString)
+	}
+
+}
+
+func TestConfigureMinify(t *testing.T) {
+	c := qt.New(t)
+	v := viper.New()
+	v.Set("minify", map[string]interface{}{
+		"disablexml": true,
+		"tdewolff": map[string]interface{}{
+			"html": map[string]interface{}{
+				"keepwhitespace": true,
+			},
+		},
+	})
+	m, _ := New(media.DefaultTypes, output.DefaultFormats, v)
+
+	for _, test := range []struct {
+		tp                media.Type
+		rawString         string
+		expectedMinString string
+		errorExpected     bool
+	}{
+		{media.HTMLType, "<hello> Hugo! </hello>", "<hello> Hugo! </hello>", false}, // configured minifier
+		{media.CSSType, " body { color: blue; }  ", "body{color:blue}", false},      // default minifier
+		{media.XMLType, " <hello>  Hugo!   </hello>  ", "", true},                   // disable Xml minificatin
+	} {
+		var b bytes.Buffer
+		if !test.errorExpected {
+			c.Assert(m.Minify(test.tp, &b, strings.NewReader(test.rawString)), qt.IsNil)
+			c.Assert(b.String(), qt.Equals, test.expectedMinString)
+		} else {
+			err := m.Minify(test.tp, &b, strings.NewReader(test.rawString))
+			c.Assert(err, qt.ErrorMatches, "minifier does not exist for mimetype")
+		}
+	}
+}
+
+func TestJSONRoundTrip(t *testing.T) {
+	c := qt.New(t)
+	v := viper.New()
+	m, _ := New(media.DefaultTypes, output.DefaultFormats, v)
+
+	for _, test := range []string{`{
+    "glossary": {
+        "title": "example glossary",
+		"GlossDiv": {
+            "title": "S",
+			"GlossList": {
+                "GlossEntry": {
+                    "ID": "SGML",
+					"SortAs": "SGML",
+					"GlossTerm": "Standard Generalized Markup Language",
+					"Acronym": "SGML",
+					"Abbrev": "ISO 8879:1986",
+					"GlossDef": {
+                        "para": "A meta-markup language, used to create markup languages such as DocBook.",
+						"GlossSeeAlso": ["GML", "XML"]
+                    },
+					"GlossSee": "markup"
+                }
+            }
+        }
+    }
+}`} {
+
+		var b bytes.Buffer
+		m1 := make(map[string]interface{})
+		m2 := make(map[string]interface{})
+		c.Assert(json.Unmarshal([]byte(test), &m1), qt.IsNil)
+		c.Assert(m.Minify(media.JSONType, &b, strings.NewReader(test)), qt.IsNil)
+		c.Assert(json.Unmarshal(b.Bytes(), &m2), qt.IsNil)
+		c.Assert(m1, qt.DeepEquals, m2)
 	}
 
 }
 
 func TestBugs(t *testing.T) {
-	assert := require.New(t)
-	m := New(media.DefaultTypes, output.DefaultFormats)
+	c := qt.New(t)
+	v := viper.New()
+	m, _ := New(media.DefaultTypes, output.DefaultFormats, v)
 
 	for _, test := range []struct {
 		tp                media.Type
@@ -86,8 +163,8 @@ func TestBugs(t *testing.T) {
 	} {
 		var b bytes.Buffer
 
-		assert.NoError(m.Minify(test.tp, &b, strings.NewReader(test.rawString)))
-		assert.Equal(test.expectedMinString, b.String())
+		c.Assert(m.Minify(test.tp, &b, strings.NewReader(test.rawString)), qt.IsNil)
+		c.Assert(b.String(), qt.Equals, test.expectedMinString)
 	}
 
 }

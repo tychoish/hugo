@@ -23,8 +23,8 @@ import (
 
 	"github.com/gohugoio/hugo/common/hugo"
 	"github.com/gohugoio/hugo/common/maps"
-
 	"github.com/gohugoio/hugo/compare"
+	"github.com/gohugoio/hugo/hugofs/files"
 
 	"github.com/gohugoio/hugo/navigation"
 	"github.com/gohugoio/hugo/related"
@@ -57,6 +57,17 @@ type AuthorProvider interface {
 // ChildCareProvider provides accessors to child resources.
 type ChildCareProvider interface {
 	Pages() Pages
+
+	// RegularPages returns a list of pages of kind 'Page'.
+	// In Hugo 0.57 we changed the Pages method so it returns all page
+	// kinds, even sections. If you want the old behaviour, you can
+	// use RegularPages.
+	RegularPages() Pages
+
+	// RegularPagesRecursive returns all regular pages below the current
+	// section.
+	RegularPagesRecursive() Pages
+
 	Resources() resource.Resources
 }
 
@@ -126,7 +137,7 @@ type PageMetaProvider interface {
 
 	// BundleType returns the bundle type: "leaf", "branch" or an empty string if it is none.
 	// See https://gohugo.io/content-management/page-bundles/
-	BundleType() string
+	BundleType() files.ContentClass
 
 	// A configured description.
 	Description() string
@@ -140,7 +151,7 @@ type PageMetaProvider interface {
 	// Configured keywords.
 	Keywords() []string
 
-	// The Page Kind. One of page, home, section, taxonomy, taxonomyTerm.
+	// The Page Kind. One of page, home, section, taxonomy, term.
 	Kind() string
 
 	// The configured layout to use to render this page. Typically set in front matter.
@@ -194,9 +205,10 @@ type PageMetaProvider interface {
 	Weight() int
 }
 
-// PageRenderProvider provides a way for a Page to render itself.
+// PageRenderProvider provides a way for a Page to render content.
 type PageRenderProvider interface {
-	Render(layout ...string) template.HTML
+	Render(layout ...string) (template.HTML, error)
+	RenderString(args ...interface{}) (template.HTML, error)
 }
 
 // PageWithoutContent is the Page without any of the content methods.
@@ -219,7 +231,7 @@ type PageWithoutContent interface {
 	ChildCareProvider
 	TreeProvider
 
-	// Horisontal navigation
+	// Horizontal navigation
 	InSectionPositioner
 	PageRenderProvider
 	PaginatorProvider
@@ -243,6 +255,10 @@ type PageWithoutContent interface {
 	compare.Eqer
 	maps.Scratcher
 	RelatedKeywordsProvider
+
+	// GetTerms gets the terms of a given taxonomy,
+	// e.g. GetTerms("categories")
+	GetTerms(taxonomy string) Pages
 
 	DeprecatedWarningPageMethods
 }

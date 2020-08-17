@@ -42,7 +42,7 @@ func (p WeightedPages) Page() Page {
 		return nil
 	}
 
-	return first.owner.Page
+	return first.owner
 }
 
 // A WeightedPage is a Page with a weight.
@@ -54,15 +54,10 @@ type WeightedPage struct {
 	// manual .Site.GetPage lookups. It is implemented in this roundabout way
 	// because we cannot add additional state to the WeightedPages slice
 	// without breaking lots of templates in the wild.
-	owner *PageWrapper
+	owner Page
 }
 
-// PageWrapper wraps a Page.
-type PageWrapper struct {
-	Page
-}
-
-func NewWeightedPage(weight int, p Page, owner *PageWrapper) WeightedPage {
+func NewWeightedPage(weight int, p Page, owner Page) WeightedPage {
 	return WeightedPage{Weight: weight, Page: p, owner: owner}
 }
 
@@ -100,13 +95,13 @@ func (wp WeightedPages) Pages() Pages {
 	return pages
 }
 
-// Prev returns the previous Page relative to the given Page in
+// Next returns the next Page relative to the given Page in
 // this weighted page set.
-func (wp WeightedPages) Prev(cur Page) Page {
+func (wp WeightedPages) Next(cur Page) Page {
 	for x, c := range wp {
-		if c.Page == cur {
+		if c.Page.Eq(cur) {
 			if x == 0 {
-				return wp[len(wp)-1].Page
+				return nil
 			}
 			return wp[x-1].Page
 		}
@@ -114,15 +109,15 @@ func (wp WeightedPages) Prev(cur Page) Page {
 	return nil
 }
 
-// Next returns the next Page relative to the given Page in
+// Prev returns the previous Page relative to the given Page in
 // this weighted page set.
-func (wp WeightedPages) Next(cur Page) Page {
+func (wp WeightedPages) Prev(cur Page) Page {
 	for x, c := range wp {
-		if c.Page == cur {
+		if c.Page.Eq(cur) {
 			if x < len(wp)-1 {
 				return wp[x+1].Page
 			}
-			return wp[0].Page
+			return nil
 		}
 	}
 	return nil

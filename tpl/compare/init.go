@@ -22,7 +22,7 @@ const name = "compare"
 
 func init() {
 	f := func(d *deps.Deps) *internal.TemplateFuncsNamespace {
-		ctx := New()
+		ctx := New(false)
 
 		ns := &internal.TemplateFuncsNamespace{
 			Name:    name,
@@ -68,27 +68,6 @@ func init() {
 
 		ns.AddMethodMapping(ctx.Ne,
 			[]string{"ne"},
-			[][2]string{},
-		)
-
-		ns.AddMethodMapping(ctx.And,
-			[]string{"and"},
-			[][2]string{},
-		)
-
-		ns.AddMethodMapping(ctx.Or,
-			[]string{"or"},
-			[][2]string{},
-		)
-
-		// getif is used internally by Hugo. Do not document.
-		ns.AddMethodMapping(ctx.getIf,
-			[]string{"getif"},
-			[][2]string{},
-		)
-
-		ns.AddMethodMapping(ctx.Not,
-			[]string{"not"},
 			[][2]string{},
 		)
 

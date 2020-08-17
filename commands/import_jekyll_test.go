@@ -15,12 +15,14 @@ package commands
 
 import (
 	"encoding/json"
-	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
+
+	qt "github.com/frankban/quicktest"
 )
 
 func TestParseJekyllFilename(t *testing.T) {
+	c := qt.New(t)
 	filenameArray := []string{
 		"2015-01-02-test.md",
 		"2012-03-15-中文.markup",
@@ -36,13 +38,14 @@ func TestParseJekyllFilename(t *testing.T) {
 
 	for i, filename := range filenameArray {
 		postDate, postName, err := parseJekyllFilename(filename)
-		assert.Equal(t, err, nil)
-		assert.Equal(t, expectResult[i].postDate.Format("2006-01-02"), postDate.Format("2006-01-02"))
-		assert.Equal(t, expectResult[i].postName, postName)
+		c.Assert(err, qt.IsNil)
+		c.Assert(expectResult[i].postDate.Format("2006-01-02"), qt.Equals, postDate.Format("2006-01-02"))
+		c.Assert(expectResult[i].postName, qt.Equals, postName)
 	}
 }
 
 func TestConvertJekyllMetadata(t *testing.T) {
+	c := qt.New(t)
 	testDataList := []struct {
 		metadata interface{}
 		postName string
@@ -73,25 +76,27 @@ func TestConvertJekyllMetadata(t *testing.T) {
 
 	for _, data := range testDataList {
 		result, err := convertJekyllMetaData(data.metadata, data.postName, data.postDate, data.draft)
-		assert.Equal(t, nil, err)
+		c.Assert(err, qt.IsNil)
 		jsonResult, err := json.Marshal(result)
-		assert.Equal(t, nil, err)
-		assert.Equal(t, data.expect, string(jsonResult))
+		c.Assert(err, qt.IsNil)
+		c.Assert(string(jsonResult), qt.Equals, data.expect)
 	}
 }
 
 func TestConvertJekyllContent(t *testing.T) {
+	c := qt.New(t)
 	testDataList := []struct {
 		metadata interface{}
 		content  string
 		expect   string
 	}{
 		{map[interface{}]interface{}{},
-			`Test content\n<!-- more -->\npart2 content`, `Test content\n<!--more-->\npart2 content`},
+			"Test content\r\n<!-- more -->\npart2 content", "Test content\n<!--more-->\npart2 content"},
 		{map[interface{}]interface{}{},
-			`Test content\n<!-- More -->\npart2 content`, `Test content\n<!--more-->\npart2 content`},
+			"Test content\n<!-- More -->\npart2 content", "Test content\n<!--more-->\npart2 content"},
 		{map[interface{}]interface{}{"excerpt_separator": "<!--sep-->"},
-			`Test content\n<!--sep-->\npart2 content`, `Test content\n<!--more-->\npart2 content`},
+			"Test content\n<!--sep-->\npart2 content",
+			"---\nexcerpt_separator: <!--sep-->\n---\nTest content\n<!--more-->\npart2 content"},
 		{map[interface{}]interface{}{}, "{% raw %}text{% endraw %}", "text"},
 		{map[interface{}]interface{}{}, "{%raw%} text2 {%endraw %}", "text2"},
 		{map[interface{}]interface{}{},
@@ -120,10 +125,13 @@ func TestConvertJekyllContent(t *testing.T) {
 		{map[interface{}]interface{}{},
 			"{% img right /placekitten/300/500 'Place Kitten #4' 'An image of a very cute kitten' %}",
 			"{{< figure class=\"right\" src=\"/placekitten/300/500\" title=\"Place Kitten #4\" alt=\"An image of a very cute kitten\" >}}"},
+		{map[interface{}]interface{}{"category": "book", "layout": "post", "Date": "2015-10-01 12:13:11"},
+			"somecontent",
+			"---\nDate: \"2015-10-01 12:13:11\"\ncategory: book\nlayout: post\n---\nsomecontent"},
 	}
-
 	for _, data := range testDataList {
-		result := convertJekyllContent(data.metadata, data.content)
-		assert.Equal(t, data.expect, result)
+		result, err := convertJekyllContent(data.metadata, data.content)
+		c.Assert(result, qt.Equals, data.expect)
+		c.Assert(err, qt.IsNil)
 	}
 }

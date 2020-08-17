@@ -16,6 +16,11 @@ package commands
 import (
 	"bytes"
 	"errors"
+	"sync"
+
+	hconfig "github.com/gohugoio/hugo/config"
+
+	"golang.org/x/sync/semaphore"
 
 	"io/ioutil"
 
@@ -27,8 +32,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strings"
-	"sync"
 	"time"
 
 	"github.com/gohugoio/hugo/common/loggers"
@@ -49,14 +52,16 @@ import (
 
 type commandeerHugoState struct {
 	*deps.DepsCfg
-	hugo     *hugolib.HugoSites
-	fsCreate sync.Once
+	hugoSites *hugolib.HugoSites
+	fsCreate  sync.Once
+	created   chan struct{}
 }
 
 type commandeer struct {
 	*commandeerHugoState
 
-	logger *loggers.Logger
+	logger       *loggers.Logger
+	serverConfig *config.Server
 
 	// Currently only set when in "fast render mode". But it seems to
 	// be fast enough that we could maybe just add it for all server modes.
@@ -70,7 +75,7 @@ type commandeer struct {
 
 	visitedURLs *types.EvictingStringQueue
 
-	doWithCommandeer func(c *commandeer) error
+	cfgInit func(c *commandeer) error
 
 	// We watch these for changes.
 	configFiles []string
@@ -84,12 +89,26 @@ type commandeer struct {
 	doLiveReload        bool
 	fastRenderMode      bool
 	showErrorInBrowser  bool
+	wasError            bool
 
 	configured bool
 	paused     bool
 
+	fullRebuildSem *semaphore.Weighted
+
 	// Any error from the last build.
 	buildErr error
+}
+
+func newCommandeerHugoState() *commandeerHugoState {
+	return &commandeerHugoState{
+		created: make(chan struct{}),
+	}
+}
+
+func (c *commandeerHugoState) hugo() *hugolib.HugoSites {
+	<-c.created
+	return c.hugoSites
 }
 
 func (c *commandeer) errCount() int {
@@ -115,7 +134,7 @@ func (c *commandeer) getErrorWithContext() interface{} {
 
 	if c.h.verbose {
 		var b bytes.Buffer
-		herrors.FprintStackTrace(&b, c.buildErr)
+		herrors.FprintStackTraceFromErr(&b, c.buildErr)
 		m["StackTrace"] = b.String()
 	}
 
@@ -136,7 +155,7 @@ func (c *commandeer) initFs(fs *hugofs.Fs) error {
 	return nil
 }
 
-func newCommandeer(mustHaveConfigFile, running bool, h *hugoBuilderCommon, f flagsToConfigHandler, doWithCommandeer func(c *commandeer) error, subCmdVs ...*cobra.Command) (*commandeer, error) {
+func newCommandeer(mustHaveConfigFile, running bool, h *hugoBuilderCommon, f flagsToConfigHandler, cfgInit func(c *commandeer) error, subCmdVs ...*cobra.Command) (*commandeer, error) {
 
 	var rebuildDebouncer func(f func())
 	if running {
@@ -146,15 +165,21 @@ func newCommandeer(mustHaveConfigFile, running bool, h *hugoBuilderCommon, f fla
 		rebuildDebouncer = debounce.New(4 * time.Second)
 	}
 
+	out := ioutil.Discard
+	if !h.quiet {
+		out = os.Stdout
+	}
+
 	c := &commandeer{
 		h:                   h,
 		ftch:                f,
-		commandeerHugoState: &commandeerHugoState{},
-		doWithCommandeer:    doWithCommandeer,
+		commandeerHugoState: newCommandeerHugoState(),
+		cfgInit:             cfgInit,
 		visitedURLs:         types.NewEvictingStringQueue(10),
 		debounce:            rebuildDebouncer,
+		fullRebuildSem:      semaphore.NewWeighted(1),
 		// This will be replaced later, but we need something to log to before the configuration is read.
-		logger: loggers.NewLogger(jww.LevelError, jww.LevelError, os.Stdout, ioutil.Discard, running),
+		logger: loggers.NewLogger(jww.LevelWarn, jww.LevelError, out, ioutil.Discard, running),
 	}
 
 	return c, c.loadConfig(mustHaveConfigFile, running)
@@ -262,12 +287,12 @@ func (c *commandeer) loadConfig(mustHaveConfigFile, running bool) error {
 		return nil
 	}
 
-	doWithCommandeer := func(cfg config.Provider) error {
+	cfgSetAndInit := func(cfg config.Provider) error {
 		c.Cfg = cfg
-		if c.doWithCommandeer == nil {
+		if c.cfgInit == nil {
 			return nil
 		}
-		err := c.doWithCommandeer(c)
+		err := c.cfgInit(c)
 		return err
 	}
 
@@ -278,22 +303,20 @@ func (c *commandeer) loadConfig(mustHaveConfigFile, running bool) error {
 	config, configFiles, err := hugolib.LoadConfig(
 		hugolib.ConfigSourceDescriptor{
 			Fs:           sourceFs,
+			Logger:       c.logger,
 			Path:         configPath,
 			WorkingDir:   dir,
 			Filename:     c.h.cfgFile,
 			AbsConfigDir: c.h.getConfigDir(dir),
+			Environ:      os.Environ(),
 			Environment:  environment},
-		doWithCommandeer,
+		cfgSetAndInit,
 		doWithConfig)
 
-	if err != nil {
-		if mustHaveConfigFile {
-			return err
-		}
-		if err != hugolib.ErrNoConfigFile {
-			return err
-		}
-
+	if err != nil && mustHaveConfigFile {
+		return err
+	} else if mustHaveConfigFile && len(configFiles) == 0 {
+		return hugolib.ErrNoConfigFile
 	}
 
 	c.configFiles = configFiles
@@ -310,8 +333,8 @@ func (c *commandeer) loadConfig(mustHaveConfigFile, running bool) error {
 
 	// This is potentially double work, but we need to do this one more time now
 	// that all the languages have been configured.
-	if c.doWithCommandeer != nil {
-		if err := c.doWithCommandeer(c); err != nil {
+	if c.cfgInit != nil {
+		if err := c.cfgInit(c); err != nil {
 			return err
 		}
 	}
@@ -323,6 +346,10 @@ func (c *commandeer) loadConfig(mustHaveConfigFile, running bool) error {
 
 	cfg.Logger = logger
 	c.logger = logger
+	c.serverConfig, err = hconfig.DecodeServer(cfg.Cfg)
+	if err != nil {
+		return err
+	}
 
 	createMemFs := config.GetBool("renderToMemory")
 
@@ -366,13 +393,15 @@ func (c *commandeer) loadConfig(mustHaveConfigFile, running bool) error {
 
 		err = c.initFs(fs)
 		if err != nil {
+			close(c.created)
 			return
 		}
 
 		var h *hugolib.HugoSites
 
 		h, err = hugolib.NewHugoSites(*c.DepsCfg)
-		c.hugo = h
+		c.hugoSites = h
+		close(c.created)
 
 	})
 
@@ -387,21 +416,6 @@ func (c *commandeer) loadConfig(mustHaveConfigFile, running bool) error {
 	config.Set("cacheDir", cacheDir)
 
 	cfg.Logger.INFO.Println("Using config file:", config.ConfigFileUsed())
-
-	themeDir := c.hugo.PathSpec.GetFirstThemeDir()
-	if themeDir != "" {
-		if _, err := sourceFs.Stat(themeDir); os.IsNotExist(err) {
-			return newSystemError("Unable to find theme Directory:", themeDir)
-		}
-	}
-
-	dir, themeVersionMismatch, minVersion := c.isThemeVsHugoVersionMismatch(sourceFs)
-
-	if themeVersionMismatch {
-		name := filepath.Base(dir)
-		cfg.Logger.ERROR.Printf("%s theme does not support Hugo version %s. Minimum version required is %s\n",
-			strings.ToUpper(name), hugo.CurrentVersion.ReleaseVersion(), minVersion)
-	}
 
 	return nil
 

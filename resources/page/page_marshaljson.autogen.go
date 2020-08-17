@@ -18,7 +18,9 @@ package page
 import (
 	"encoding/json"
 	"github.com/bep/gitmap"
+	"github.com/gohugoio/hugo/common/maps"
 	"github.com/gohugoio/hugo/config"
+	"github.com/gohugoio/hugo/hugofs/files"
 	"github.com/gohugoio/hugo/langs"
 	"github.com/gohugoio/hugo/media"
 	"github.com/gohugoio/hugo/navigation"
@@ -42,8 +44,8 @@ func MarshalPageToJSON(p Page) ([]byte, error) {
 	length := p.Len()
 	tableOfContents := p.TableOfContents()
 	rawContent := p.RawContent()
-	mediaType := p.MediaType()
 	resourceType := p.ResourceType()
+	mediaType := p.MediaType()
 	permalink := p.Permalink()
 	relPermalink := p.RelPermalink()
 	name := p.Name()
@@ -98,20 +100,20 @@ func MarshalPageToJSON(p Page) ([]byte, error) {
 		Len                      int
 		TableOfContents          template.HTML
 		RawContent               string
-		MediaType                media.Type
 		ResourceType             string
+		MediaType                media.Type
 		Permalink                string
 		RelPermalink             string
 		Name                     string
 		Title                    string
-		Params                   map[string]interface{}
+		Params                   maps.Params
 		Data                     interface{}
 		Date                     time.Time
 		Lastmod                  time.Time
 		PublishDate              time.Time
 		ExpiryDate               time.Time
 		Aliases                  []string
-		BundleType               string
+		BundleType               files.ContentClass
 		Description              string
 		Draft                    bool
 		IsHome                   bool
@@ -153,8 +155,8 @@ func MarshalPageToJSON(p Page) ([]byte, error) {
 		Len:                      length,
 		TableOfContents:          tableOfContents,
 		RawContent:               rawContent,
-		MediaType:                mediaType,
 		ResourceType:             resourceType,
+		MediaType:                mediaType,
 		Permalink:                permalink,
 		RelPermalink:             relPermalink,
 		Name:                     name,

@@ -14,64 +14,133 @@
 package commands
 
 import (
+	"encoding/json"
+	"fmt"
+	"os"
 	"reflect"
+	"regexp"
 	"sort"
+	"strings"
+
+	"github.com/gohugoio/hugo/parser"
+	"github.com/gohugoio/hugo/parser/metadecoders"
+
+	"github.com/gohugoio/hugo/modules"
 
 	"github.com/spf13/cobra"
-	jww "github.com/spf13/jwalterweatherman"
 	"github.com/spf13/viper"
 )
 
 var _ cmder = (*configCmd)(nil)
 
 type configCmd struct {
-	hugoBuilderCommon
-	*baseCmd
+	*baseBuilderCmd
 }
 
-func newConfigCmd() *configCmd {
+func (b *commandsBuilder) newConfigCmd() *configCmd {
 	cc := &configCmd{}
-	cc.baseCmd = newBaseCmd(&cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "config",
 		Short: "Print the site configuration",
 		Long:  `Print the site configuration, both default and custom settings.`,
 		RunE:  cc.printConfig,
-	})
+	}
 
-	cc.cmd.Flags().StringVarP(&cc.source, "source", "s", "", "filesystem path to read files relative from")
+	printMountsCmd := &cobra.Command{
+		Use:   "mounts",
+		Short: "Print the configured file mounts",
+		RunE:  cc.printMounts,
+	}
+
+	cmd.AddCommand(printMountsCmd)
+
+	cc.baseBuilderCmd = b.newBuilderBasicCmd(cmd)
 
 	return cc
 }
 
+func (c *configCmd) printMounts(cmd *cobra.Command, args []string) error {
+	cfg, err := initializeConfig(true, false, &c.hugoBuilderCommon, c, nil)
+	if err != nil {
+		return err
+	}
+
+	allModules := cfg.Cfg.Get("allmodules").(modules.Modules)
+
+	for _, m := range allModules {
+		if err := parser.InterfaceToConfig(&modMounts{m: m}, metadecoders.JSON, os.Stdout); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (c *configCmd) printConfig(cmd *cobra.Command, args []string) error {
 	cfg, err := initializeConfig(true, false, &c.hugoBuilderCommon, c, nil)
-
 	if err != nil {
 		return err
 	}
 
 	allSettings := cfg.Cfg.(*viper.Viper).AllSettings()
 
-	var separator string
-	if allSettings["metadataformat"] == "toml" {
+	// We need to clean up this, but we store objects in the config that
+	// isn't really interesting to the end user, so filter these.
+	ignoreKeysRe := regexp.MustCompile("client|sorted|filecacheconfigs|allmodules|multilingual")
+
+	separator := ": "
+
+	if len(cfg.configFiles) > 0 && strings.HasSuffix(cfg.configFiles[0], ".toml") {
 		separator = " = "
-	} else {
-		separator = ": "
 	}
 
 	var keys []string
 	for k := range allSettings {
+		if ignoreKeysRe.MatchString(k) {
+			continue
+		}
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
 		kv := reflect.ValueOf(allSettings[k])
 		if kv.Kind() == reflect.String {
-			jww.FEEDBACK.Printf("%s%s\"%+v\"\n", k, separator, allSettings[k])
+			fmt.Printf("%s%s\"%+v\"\n", k, separator, allSettings[k])
 		} else {
-			jww.FEEDBACK.Printf("%s%s%+v\n", k, separator, allSettings[k])
+			fmt.Printf("%s%s%+v\n", k, separator, allSettings[k])
 		}
 	}
 
 	return nil
+}
+
+type modMounts struct {
+	m modules.Module
+}
+
+type modMount struct {
+	Source string `json:"source"`
+	Target string `json:"target"`
+	Lang   string `json:"lang,omitempty"`
+}
+
+func (m *modMounts) MarshalJSON() ([]byte, error) {
+	var mounts []modMount
+
+	for _, mount := range m.m.Mounts() {
+		mounts = append(mounts, modMount{
+			Source: mount.Source,
+			Target: mount.Target,
+			Lang:   mount.Lang,
+		})
+	}
+
+	return json.Marshal(&struct {
+		Path   string     `json:"path"`
+		Dir    string     `json:"dir"`
+		Mounts []modMount `json:"mounts"`
+	}{
+		Path:   m.m.Path(),
+		Dir:    m.m.Dir(),
+		Mounts: mounts,
+	})
 }

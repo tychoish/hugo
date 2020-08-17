@@ -44,6 +44,10 @@ Download the appropriate version for your platform from [Hugo Releases][releases
 
 Ideally, you should install it somewhere in your `PATH` for easy use. `/usr/local/bin` is the most probable location.
 
+### Docker
+
+We currently do not offer official Hugo images for Docker, but we do recommend these up to date distributions: https://hub.docker.com/r/klakegg/hugo/
+
 ### Homebrew (macOS)
 
 If you are on macOS and using [Homebrew][brew], you can install Hugo with the following one-liner:
@@ -54,6 +58,16 @@ brew install hugo
 
 For more detailed explanations, read the installation guides that follow for installing on macOS and Windows.
 
+### Homebrew (Linux)
+
+If you are using [Homebrew][linuxbrew] on Linux, you can install Hugo with the following one-liner:
+
+{{< code file="install-with-linuxbrew.sh" >}}
+brew install hugo
+{{< /code >}}
+
+Installation guides for Homebrew on Linux are available on their [website][linuxbrew].
+
 ### Chocolatey (Windows)
 
 If you are on a Windows machine and use [Chocolatey][] for package management, you can install Hugo with the following one-liner:
@@ -62,12 +76,24 @@ If you are on a Windows machine and use [Chocolatey][] for package management, y
 choco install hugo -confirm
 {{< /code >}}
 
+Or if you need the “extended” Sass/SCSS version:
+
+{{< code file="install-extended-with-chocolatey.ps1" >}}
+choco install hugo-extended -confirm
+{{< /code >}}
+
 ### Scoop (Windows)
 
 If you are on a Windows machine and use [Scoop][] for package management, you can install Hugo with the following one-liner:
 
 ```bash
 scoop install hugo
+```
+
+Or install the extended version with:
+
+```bash
+scoop install hugo-extended
 ```
 
 ### Source
@@ -289,9 +315,6 @@ Make the directory containing the source your working directory and then fetch H
 mkdir -p src/github.com/gohugoio
 ln -sf $(pwd) src/github.com/gohugoio/hugo
 
-# set the build path for Go
-export GOPATH=$(pwd)
-
 go get
 ```
 
@@ -329,8 +352,7 @@ You'll need a place to store the Hugo executable, your [content][], and the gene
 
 1. Download the latest zipped Hugo executable from [Hugo Releases][releases].
 2. Extract all contents to your `..\Hugo\bin` folder.
-3. The `hugo` executable will be named as `hugo_hugo-version_platform_arch.exe`. Rename the executable to `hugo.exe` for ease of use.
-4. In PowerShell or your preferred CLI, add the `hugo.exe` executable to your PATH by navigating to `C:\Hugo\bin` (or the location of your hugo.exe file) and use the command `set PATH=%PATH%;C:\Hugo\bin`. If the `hugo` command does not work after a reboot, you may have to run the command prompt as administrator.
+3. In PowerShell or your preferred CLI, add the `hugo.exe` executable to your PATH by navigating to `C:\Hugo\bin` (or the location of your hugo.exe file) and use the command `set PATH=%PATH%;C:\Hugo\bin`. If the `hugo` command does not work after a reboot, you may have to run the command prompt as administrator.
 
 ### Less-technical Users
 
@@ -426,7 +448,7 @@ Directory of C:\hugo\sites\example.com
 
 ### Snap Package
 
-In any of the [Linux distributions that support snaps][snaps], you may install install the "extended" Sass/SCSS version with this command:
+In any of the [Linux distributions that support snaps][snaps], you may install the "extended" Sass/SCSS version with this command:
 
     snap install hugo --channel=extended
 
@@ -437,7 +459,7 @@ To install the non-extended version without Sass/SCSS support:
 To switch between the two, use either `snap refresh hugo --channel=extended` or `snap refresh hugo --channel=stable`.
 
 {{% note %}}
-Hugo-as-a-snap can write only inside the user’s `$HOME` directory---and gvfs-mounted directories owned by the user---because of Snaps’ confinement and security model. More information is also available [in this related GitHub issue](https://github.com/gohugoio/hugo/issues/3143). Use ```sudo snap install hugo --classic``` to disable the default security model if you want hugo to be able to have write access in other paths besides the user’s `$HOME` directory.
+Hugo installed via Snap can write only inside the user’s `$HOME` directory---and gvfs-mounted directories owned by the user---because of Snaps’ confinement and security model. More information is also available [in this related GitHub issue](https://github.com/gohugoio/hugo/issues/3143).
 {{% /note %}}
 
 ### Debian and Ubuntu
@@ -446,7 +468,9 @@ Hugo-as-a-snap can write only inside the user’s `$HOME` directory---and gvfs-m
 
     sudo apt-get install hugo
 
-This installs the "extended" Sass/SCSS version.
+What this installs depends on your Debian/Ubuntu version. On Ubuntu bionic (18.04), this installs the non-extended version without Sass/SCSS support. On Ubuntu disco (19.04), this installs the extended version with Sass/SCSS support.
+
+This option is not recommended because the Hugo in Linux package managers for Debian and Ubuntu is usually a few versions behind as described [here](https://github.com/gcushen/hugo-academic/issues/703)
 
 ### Arch Linux
 
@@ -487,12 +511,6 @@ OpenBSD provides a package for Hugo via `pkg_add`:
 
 Upgrading Hugo is as easy as downloading and replacing the executable you’ve placed in your `PATH` or run `brew upgrade hugo` if using Homebrew.
 
-## Install Pygments (Optional)
-
-The Hugo executable has one *optional* external dependency for source code highlighting ([Pygments][pygments]).
-
-If you want to have source code highlighting using the [highlight shortcode][], you need to install the Python-based Pygments program. The procedure is outlined on the [Pygments homepage][pygments].
-
 ## Next Steps
 
 Now that you've installed Hugo, read the [Quick Start guide][quickstart] and explore the rest of the documentation. If you have questions, ask the Hugo community directly by visiting the [Hugo Discussion Forum][forum].
@@ -505,14 +523,15 @@ Now that you've installed Hugo, read the [Quick Start guide][quickstart] and exp
 [mage]: https://github.com/magefile/mage
 [dep]: https://github.com/golang/dep
 [highlight shortcode]: /content-management/shortcodes/#highlight
-[installgit]: http://git-scm.com/
+[installgit]: https://git-scm.com/
 [installgo]: https://golang.org/dl/
+[linuxbrew]: https://docs.brew.sh/Homebrew-on-Linux
 [Path Editor]: https://patheditor2.codeplex.com/
-[pygments]: http://pygments.org
+[pygments]: https://pygments.org
 [quickstart]: /getting-started/quick-start/
 [redhatforum]: https://discourse.gohugo.io/t/solved-fedora-copr-repository-out-of-service/2491
 [releases]: https://github.com/gohugoio/hugo/releases
 [Scoop]: https://scoop.sh/
-[snaps]: http://snapcraft.io/docs/core/install
+[snaps]: https://snapcraft.io/docs/installing-snapd
 [windowsarch]: https://esupport.trendmicro.com/en-us/home/pages/technical-support/1038680.aspx
 [Windows Environment Variables Editor]: http://eveditor.com/

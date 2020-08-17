@@ -14,15 +14,14 @@
 package commands
 
 import (
-	"os"
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	qt "github.com/frankban/quicktest"
 )
 
 // Issue #5662
 func TestHugoWithContentDirOverride(t *testing.T) {
-	assert := require.New(t)
+	c := qt.New(t)
 
 	hugoCmd := newCommandsBuilder().addAll().build()
 	cmd := hugoCmd.getCommand()
@@ -37,16 +36,13 @@ title = "Hugo Commands"
 contentDir = "thisdoesnotexist"
 
 `
-	dir, err := createSimpleTestSite(t, testSiteConfig{configTOML: cfgStr, contentDir: contentDir})
-	assert.NoError(err)
-
-	defer func() {
-		os.RemoveAll(dir)
-	}()
+	dir, clean, err := createSimpleTestSite(t, testSiteConfig{configTOML: cfgStr, contentDir: contentDir})
+	c.Assert(err, qt.IsNil)
+	defer clean()
 
 	cmd.SetArgs([]string{"-s=" + dir, "-c=" + contentDir})
 
 	_, err = cmd.ExecuteC()
-	assert.NoError(err)
+	c.Assert(err, qt.IsNil)
 
 }

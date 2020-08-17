@@ -14,8 +14,10 @@
 package resource
 
 import (
+	"github.com/gohugoio/hugo/common/maps"
 	"github.com/gohugoio/hugo/langs"
 	"github.com/gohugoio/hugo/media"
+	"github.com/gohugoio/hugo/resources/images/exif"
 
 	"github.com/gohugoio/hugo/common/hugio"
 )
@@ -23,26 +25,57 @@ import (
 // Cloner is an internal template and not meant for use in the templates. It
 // may change without notice.
 type Cloner interface {
-	WithNewBase(base string) Resource
+	Clone() Resource
+}
+
+// OriginProvider provides the original Resource if this is wrapped.
+// This is an internal Hugo interface and not meant for use in the templates.
+type OriginProvider interface {
+	Origin() Resource
+	GetFieldString(pattern string) (string, bool)
 }
 
 // Resource represents a linkable resource, i.e. a content page, image etc.
 type Resource interface {
-	ResourceTypesProvider
+	ResourceTypeProvider
+	MediaTypeProvider
 	ResourceLinksProvider
 	ResourceMetaProvider
 	ResourceParamsProvider
 	ResourceDataProvider
 }
 
-type ResourceTypesProvider interface {
-	// MediaType is this resource's MIME type.
-	MediaType() media.Type
+// Image represents an image resource.
+type Image interface {
+	Resource
+	ImageOps
+}
 
+type ImageOps interface {
+	Height() int
+	Width() int
+	Fill(spec string) (Image, error)
+	Fit(spec string) (Image, error)
+	Resize(spec string) (Image, error)
+	Filter(filters ...interface{}) (Image, error)
+	Exif() (*exif.Exif, error)
+}
+
+type ResourceTypeProvider interface {
 	// ResourceType is the resource type. For most file types, this is the main
 	// part of the MIME type, e.g. "image", "application", "text" etc.
 	// For content pages, this value is "page".
 	ResourceType() string
+}
+
+type ResourceTypesProvider interface {
+	ResourceTypeProvider
+	MediaTypeProvider
+}
+
+type MediaTypeProvider interface {
+	// MediaType is this resource's MIME type.
+	MediaType() media.Type
 }
 
 type ResourceLinksProvider interface {
@@ -68,7 +101,7 @@ type ResourceMetaProvider interface {
 
 type ResourceParamsProvider interface {
 	// Params set in front matter for this resource.
-	Params() map[string]interface{}
+	Params() maps.Params
 }
 
 type ResourceDataProvider interface {
@@ -117,6 +150,10 @@ type OpenReadSeekCloser func() (hugio.ReadSeekCloser, error)
 // ReadSeekCloserResource is a Resource that supports loading its content.
 type ReadSeekCloserResource interface {
 	MediaType() media.Type
+	ReadSeekCloserProvider
+}
+
+type ReadSeekCloserProvider interface {
 	ReadSeekCloser() (hugio.ReadSeekCloser, error)
 }
 
@@ -134,6 +171,12 @@ type LanguageProvider interface {
 // TranslationKeyProvider connects translations of the same Resource.
 type TranslationKeyProvider interface {
 	TranslationKey() string
+}
+
+// UnmarshableResource represents a Resource that can be unmarshaled to some other format.
+type UnmarshableResource interface {
+	ReadSeekCloserResource
+	Identifier
 }
 
 type resourceTypesHolder struct {

@@ -17,112 +17,13 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/gohugoio/hugo/hugofs"
-	"github.com/spf13/viper"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	qt "github.com/frankban/quicktest"
 )
 
 // Issue #1133
 func TestNewContentPathSectionWithForwardSlashes(t *testing.T) {
+	c := qt.New(t)
 	p, s := newContentPathSection(nil, "/post/new.md")
-	assert.Equal(t, filepath.FromSlash("/post/new.md"), p)
-	assert.Equal(t, "post", s)
-}
-
-func checkNewSiteInited(fs *hugofs.Fs, basepath string, t *testing.T) {
-
-	paths := []string{
-		filepath.Join(basepath, "layouts"),
-		filepath.Join(basepath, "content"),
-		filepath.Join(basepath, "archetypes"),
-		filepath.Join(basepath, "static"),
-		filepath.Join(basepath, "data"),
-		filepath.Join(basepath, "config.toml"),
-	}
-
-	for _, path := range paths {
-		_, err := fs.Source.Stat(path)
-		require.NoError(t, err)
-	}
-}
-
-func TestDoNewSite(t *testing.T) {
-	n := newNewSiteCmd()
-	basepath := filepath.Join("base", "blog")
-	_, fs := newTestCfg()
-
-	require.NoError(t, n.doNewSite(fs, basepath, false))
-
-	checkNewSiteInited(fs, basepath, t)
-}
-
-func TestDoNewSite_noerror_base_exists_but_empty(t *testing.T) {
-	basepath := filepath.Join("base", "blog")
-	_, fs := newTestCfg()
-	n := newNewSiteCmd()
-
-	require.NoError(t, fs.Source.MkdirAll(basepath, 0777))
-
-	require.NoError(t, n.doNewSite(fs, basepath, false))
-}
-
-func TestDoNewSite_error_base_exists(t *testing.T) {
-	basepath := filepath.Join("base", "blog")
-	_, fs := newTestCfg()
-	n := newNewSiteCmd()
-
-	require.NoError(t, fs.Source.MkdirAll(basepath, 0777))
-	_, err := fs.Source.Create(filepath.Join(basepath, "foo"))
-	require.NoError(t, err)
-	// Since the directory already exists and isn't empty, expect an error
-	require.Error(t, n.doNewSite(fs, basepath, false))
-
-}
-
-func TestDoNewSite_force_empty_dir(t *testing.T) {
-	basepath := filepath.Join("base", "blog")
-	_, fs := newTestCfg()
-	n := newNewSiteCmd()
-
-	require.NoError(t, fs.Source.MkdirAll(basepath, 0777))
-
-	require.NoError(t, n.doNewSite(fs, basepath, true))
-
-	checkNewSiteInited(fs, basepath, t)
-}
-
-func TestDoNewSite_error_force_dir_inside_exists(t *testing.T) {
-	basepath := filepath.Join("base", "blog")
-	_, fs := newTestCfg()
-	n := newNewSiteCmd()
-
-	contentPath := filepath.Join(basepath, "content")
-
-	require.NoError(t, fs.Source.MkdirAll(contentPath, 0777))
-	require.Error(t, n.doNewSite(fs, basepath, true))
-}
-
-func TestDoNewSite_error_force_config_inside_exists(t *testing.T) {
-	basepath := filepath.Join("base", "blog")
-	_, fs := newTestCfg()
-	n := newNewSiteCmd()
-
-	configPath := filepath.Join(basepath, "config.toml")
-	require.NoError(t, fs.Source.MkdirAll(basepath, 0777))
-	_, err := fs.Source.Create(configPath)
-	require.NoError(t, err)
-
-	require.Error(t, n.doNewSite(fs, basepath, true))
-}
-
-func newTestCfg() (*viper.Viper, *hugofs.Fs) {
-
-	v := viper.New()
-	fs := hugofs.NewMem(v)
-
-	v.SetFs(fs.Source)
-
-	return v, fs
-
+	c.Assert(p, qt.Equals, filepath.FromSlash("/post/new.md"))
+	c.Assert(s, qt.Equals, "post")
 }

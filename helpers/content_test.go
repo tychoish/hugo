@@ -19,12 +19,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/afero"
+
+	"github.com/gohugoio/hugo/common/loggers"
+
 	"github.com/spf13/viper"
 
-	"github.com/miekg/mmark"
-	"github.com/russross/blackfriday"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	qt "github.com/frankban/quicktest"
 )
 
 const tstHTMLContent = "<!DOCTYPE html><html><head><script src=\"http://two/foobar.js\"></script></head><body><nav><ul><li hugo-nav=\"section_0\"></li><li hugo-nav=\"section_1\"></li></ul></nav><article>content <a href=\"http://two/foobar\">foobar</a>. Follow up</article><p>This is some text.<br>And some more.</p></body></html>"
@@ -40,12 +41,13 @@ func TestTrimShortHTML(t *testing.T) {
 		{[]byte("\n  \n \t  <p> \t Whitespace\nHTML  \n\t </p>\n\t"), []byte("Whitespace\nHTML")},
 		{[]byte("<p>Multiple</p><p>paragraphs</p>"), []byte("<p>Multiple</p><p>paragraphs</p>")},
 		{[]byte("<p>Nested<p>paragraphs</p></p>"), []byte("<p>Nested<p>paragraphs</p></p>")},
+		{[]byte("<p>Hello</p>\n<ul>\n<li>list1</li>\n<li>list2</li>\n</ul>"), []byte("<p>Hello</p>\n<ul>\n<li>list1</li>\n<li>list2</li>\n</ul>")},
 	}
 
 	c := newTestContentSpec()
 	for i, test := range tests {
 		output := c.TrimShortHTML(test.input)
-		if bytes.Compare(test.output, output) != 0 {
+		if !bytes.Equal(test.output, output) {
 			t.Errorf("Test %d failed. Expected %q got %q", i, test.output, output)
 		}
 	}
@@ -90,30 +92,32 @@ func BenchmarkStripHTML(b *testing.B) {
 }
 
 func TestStripEmptyNav(t *testing.T) {
+	c := qt.New(t)
 	cleaned := stripEmptyNav([]byte("do<nav>\n</nav>\n\nbedobedo"))
-	assert.Equal(t, []byte("dobedobedo"), cleaned)
+	c.Assert(cleaned, qt.DeepEquals, []byte("dobedobedo"))
 }
 
 func TestBytesToHTML(t *testing.T) {
-	assert.Equal(t, template.HTML("dobedobedo"), BytesToHTML([]byte("dobedobedo")))
+	c := qt.New(t)
+	c.Assert(BytesToHTML([]byte("dobedobedo")), qt.Equals, template.HTML("dobedobedo"))
 }
 
 func TestNewContentSpec(t *testing.T) {
 	cfg := viper.New()
-	assert := require.New(t)
+	c := qt.New(t)
 
 	cfg.Set("summaryLength", 32)
 	cfg.Set("buildFuture", true)
 	cfg.Set("buildExpired", true)
 	cfg.Set("buildDrafts", true)
 
-	spec, err := NewContentSpec(cfg)
+	spec, err := NewContentSpec(cfg, loggers.NewErrorLogger(), afero.NewMemMapFs())
 
-	assert.NoError(err)
-	assert.Equal(32, spec.summaryLength)
-	assert.True(spec.BuildFuture)
-	assert.True(spec.BuildExpired)
-	assert.True(spec.BuildDrafts)
+	c.Assert(err, qt.IsNil)
+	c.Assert(spec.summaryLength, qt.Equals, 32)
+	c.Assert(spec.BuildFuture, qt.Equals, true)
+	c.Assert(spec.BuildExpired, qt.Equals, true)
+	c.Assert(spec.BuildDrafts, qt.Equals, true)
 
 }
 
@@ -201,233 +205,6 @@ func TestTruncateWordsByRune(t *testing.T) {
 	}
 }
 
-func TestGetHTMLRendererFlags(t *testing.T) {
-	c := newTestContentSpec()
-	ctx := &RenderingContext{Cfg: c.Cfg, Config: c.BlackFriday}
-	renderer := c.getHTMLRenderer(blackfriday.HTML_USE_XHTML, ctx)
-	flags := renderer.GetFlags()
-	if flags&blackfriday.HTML_USE_XHTML != blackfriday.HTML_USE_XHTML {
-		t.Errorf("Test flag: %d was not found amongs set flags:%d; Result: %d", blackfriday.HTML_USE_XHTML, flags, flags&blackfriday.HTML_USE_XHTML)
-	}
-}
-
-func TestGetHTMLRendererAllFlags(t *testing.T) {
-	c := newTestContentSpec()
-
-	type data struct {
-		testFlag int
-	}
-
-	allFlags := []data{
-		{blackfriday.HTML_USE_XHTML},
-		{blackfriday.HTML_FOOTNOTE_RETURN_LINKS},
-		{blackfriday.HTML_USE_SMARTYPANTS},
-		{blackfriday.HTML_SMARTYPANTS_QUOTES_NBSP},
-		{blackfriday.HTML_SMARTYPANTS_ANGLED_QUOTES},
-		{blackfriday.HTML_SMARTYPANTS_FRACTIONS},
-		{blackfriday.HTML_HREF_TARGET_BLANK},
-		{blackfriday.HTML_NOFOLLOW_LINKS},
-		{blackfriday.HTML_NOREFERRER_LINKS},
-		{blackfriday.HTML_SMARTYPANTS_DASHES},
-		{blackfriday.HTML_SMARTYPANTS_LATEX_DASHES},
-	}
-	defaultFlags := blackfriday.HTML_USE_XHTML
-	ctx := &RenderingContext{Cfg: c.Cfg, Config: c.BlackFriday}
-	ctx.Config.AngledQuotes = true
-	ctx.Config.Fractions = true
-	ctx.Config.HrefTargetBlank = true
-	ctx.Config.NofollowLinks = true
-	ctx.Config.NoreferrerLinks = true
-	ctx.Config.LatexDashes = true
-	ctx.Config.PlainIDAnchors = true
-	ctx.Config.SmartDashes = true
-	ctx.Config.Smartypants = true
-	ctx.Config.SmartypantsQuotesNBSP = true
-	renderer := c.getHTMLRenderer(defaultFlags, ctx)
-	actualFlags := renderer.GetFlags()
-	var expectedFlags int
-	//OR-ing flags together...
-	for _, d := range allFlags {
-		expectedFlags |= d.testFlag
-	}
-	if expectedFlags != actualFlags {
-		t.Errorf("Expected flags (%d) did not equal actual (%d) flags.", expectedFlags, actualFlags)
-	}
-}
-
-func TestGetHTMLRendererAnchors(t *testing.T) {
-	c := newTestContentSpec()
-	ctx := &RenderingContext{Cfg: c.Cfg, Config: c.BlackFriday}
-	ctx.DocumentID = "testid"
-	ctx.Config.PlainIDAnchors = false
-
-	actualRenderer := c.getHTMLRenderer(0, ctx)
-	headerBuffer := &bytes.Buffer{}
-	footnoteBuffer := &bytes.Buffer{}
-	expectedFootnoteHref := []byte("href=\"#fn:testid:href\"")
-	expectedHeaderID := []byte("<h1 id=\"id:testid\"></h1>\n")
-
-	actualRenderer.Header(headerBuffer, func() bool { return true }, 1, "id")
-	actualRenderer.FootnoteRef(footnoteBuffer, []byte("href"), 1)
-
-	if !bytes.Contains(footnoteBuffer.Bytes(), expectedFootnoteHref) {
-		t.Errorf("Footnote anchor prefix not applied. Actual:%s Expected:%s", footnoteBuffer.String(), expectedFootnoteHref)
-	}
-
-	if !bytes.Equal(headerBuffer.Bytes(), expectedHeaderID) {
-		t.Errorf("Header Id Postfix not applied. Actual:%s Expected:%s", headerBuffer.String(), expectedHeaderID)
-	}
-}
-
-func TestGetMmarkHTMLRenderer(t *testing.T) {
-	c := newTestContentSpec()
-	ctx := &RenderingContext{Cfg: c.Cfg, Config: c.BlackFriday}
-	ctx.DocumentID = "testid"
-	ctx.Config.PlainIDAnchors = false
-	actualRenderer := c.getMmarkHTMLRenderer(0, ctx)
-
-	headerBuffer := &bytes.Buffer{}
-	footnoteBuffer := &bytes.Buffer{}
-	expectedFootnoteHref := []byte("href=\"#fn:testid:href\"")
-	expectedHeaderID := []byte("<h1 id=\"id\"></h1>")
-
-	actualRenderer.FootnoteRef(footnoteBuffer, []byte("href"), 1)
-	actualRenderer.Header(headerBuffer, func() bool { return true }, 1, "id")
-
-	if !bytes.Contains(footnoteBuffer.Bytes(), expectedFootnoteHref) {
-		t.Errorf("Footnote anchor prefix not applied. Actual:%s Expected:%s", footnoteBuffer.String(), expectedFootnoteHref)
-	}
-
-	if bytes.Equal(headerBuffer.Bytes(), expectedHeaderID) {
-		t.Errorf("Header Id Postfix applied. Actual:%s Expected:%s", headerBuffer.String(), expectedHeaderID)
-	}
-}
-
-func TestGetMarkdownExtensionsMasksAreRemovedFromExtensions(t *testing.T) {
-	c := newTestContentSpec()
-	ctx := &RenderingContext{Cfg: c.Cfg, Config: c.BlackFriday}
-	ctx.Config.Extensions = []string{"headerId"}
-	ctx.Config.ExtensionsMask = []string{"noIntraEmphasis"}
-
-	actualFlags := getMarkdownExtensions(ctx)
-	if actualFlags&blackfriday.EXTENSION_NO_INTRA_EMPHASIS == blackfriday.EXTENSION_NO_INTRA_EMPHASIS {
-		t.Errorf("Masked out flag {%v} found amongst returned extensions.", blackfriday.EXTENSION_NO_INTRA_EMPHASIS)
-	}
-}
-
-func TestGetMarkdownExtensionsByDefaultAllExtensionsAreEnabled(t *testing.T) {
-	type data struct {
-		testFlag int
-	}
-	c := newTestContentSpec()
-	ctx := &RenderingContext{Cfg: c.Cfg, Config: c.BlackFriday}
-	ctx.Config.Extensions = []string{""}
-	ctx.Config.ExtensionsMask = []string{""}
-	allExtensions := []data{
-		{blackfriday.EXTENSION_NO_INTRA_EMPHASIS},
-		{blackfriday.EXTENSION_TABLES},
-		{blackfriday.EXTENSION_FENCED_CODE},
-		{blackfriday.EXTENSION_AUTOLINK},
-		{blackfriday.EXTENSION_STRIKETHROUGH},
-		// {blackfriday.EXTENSION_LAX_HTML_BLOCKS},
-		{blackfriday.EXTENSION_SPACE_HEADERS},
-		// {blackfriday.EXTENSION_HARD_LINE_BREAK},
-		// {blackfriday.EXTENSION_TAB_SIZE_EIGHT},
-		{blackfriday.EXTENSION_FOOTNOTES},
-		// {blackfriday.EXTENSION_NO_EMPTY_LINE_BEFORE_BLOCK},
-		{blackfriday.EXTENSION_HEADER_IDS},
-		// {blackfriday.EXTENSION_TITLEBLOCK},
-		{blackfriday.EXTENSION_AUTO_HEADER_IDS},
-		{blackfriday.EXTENSION_BACKSLASH_LINE_BREAK},
-		{blackfriday.EXTENSION_DEFINITION_LISTS},
-	}
-
-	actualFlags := getMarkdownExtensions(ctx)
-	for _, e := range allExtensions {
-		if actualFlags&e.testFlag != e.testFlag {
-			t.Errorf("Flag %v was not found in the list of extensions.", e)
-		}
-	}
-}
-
-func TestGetMarkdownExtensionsAddingFlagsThroughRenderingContext(t *testing.T) {
-	c := newTestContentSpec()
-	ctx := &RenderingContext{Cfg: c.Cfg, Config: c.BlackFriday}
-	ctx.Config.Extensions = []string{"definitionLists"}
-	ctx.Config.ExtensionsMask = []string{""}
-
-	actualFlags := getMarkdownExtensions(ctx)
-	if actualFlags&blackfriday.EXTENSION_DEFINITION_LISTS != blackfriday.EXTENSION_DEFINITION_LISTS {
-		t.Errorf("Masked out flag {%v} found amongst returned extensions.", blackfriday.EXTENSION_DEFINITION_LISTS)
-	}
-}
-
-func TestGetMarkdownRenderer(t *testing.T) {
-	c := newTestContentSpec()
-	ctx := &RenderingContext{Cfg: c.Cfg, Config: c.BlackFriday}
-	ctx.Content = []byte("testContent")
-	actualRenderedMarkdown := c.markdownRender(ctx)
-	expectedRenderedMarkdown := []byte("<p>testContent</p>\n")
-	if !bytes.Equal(actualRenderedMarkdown, expectedRenderedMarkdown) {
-		t.Errorf("Actual rendered Markdown (%s) did not match expected markdown (%s)", actualRenderedMarkdown, expectedRenderedMarkdown)
-	}
-}
-
-func TestGetMarkdownRendererWithTOC(t *testing.T) {
-	c := newTestContentSpec()
-	ctx := &RenderingContext{RenderTOC: true, Cfg: c.Cfg, Config: c.BlackFriday}
-	ctx.Content = []byte("testContent")
-	actualRenderedMarkdown := c.markdownRender(ctx)
-	expectedRenderedMarkdown := []byte("<nav>\n</nav>\n\n<p>testContent</p>\n")
-	if !bytes.Equal(actualRenderedMarkdown, expectedRenderedMarkdown) {
-		t.Errorf("Actual rendered Markdown (%s) did not match expected markdown (%s)", actualRenderedMarkdown, expectedRenderedMarkdown)
-	}
-}
-
-func TestGetMmarkExtensions(t *testing.T) {
-	//TODO: This is doing the same just with different marks...
-	type data struct {
-		testFlag int
-	}
-	c := newTestContentSpec()
-	ctx := &RenderingContext{Cfg: c.Cfg, Config: c.BlackFriday}
-	ctx.Config.Extensions = []string{"tables"}
-	ctx.Config.ExtensionsMask = []string{""}
-	allExtensions := []data{
-		{mmark.EXTENSION_TABLES},
-		{mmark.EXTENSION_FENCED_CODE},
-		{mmark.EXTENSION_AUTOLINK},
-		{mmark.EXTENSION_SPACE_HEADERS},
-		{mmark.EXTENSION_CITATION},
-		{mmark.EXTENSION_TITLEBLOCK_TOML},
-		{mmark.EXTENSION_HEADER_IDS},
-		{mmark.EXTENSION_AUTO_HEADER_IDS},
-		{mmark.EXTENSION_UNIQUE_HEADER_IDS},
-		{mmark.EXTENSION_FOOTNOTES},
-		{mmark.EXTENSION_SHORT_REF},
-		{mmark.EXTENSION_NO_EMPTY_LINE_BEFORE_BLOCK},
-		{mmark.EXTENSION_INCLUDE},
-	}
-
-	actualFlags := getMmarkExtensions(ctx)
-	for _, e := range allExtensions {
-		if actualFlags&e.testFlag != e.testFlag {
-			t.Errorf("Flag %v was not found in the list of extensions.", e)
-		}
-	}
-}
-
-func TestMmarkRender(t *testing.T) {
-	c := newTestContentSpec()
-	ctx := &RenderingContext{Cfg: c.Cfg, Config: c.BlackFriday}
-	ctx.Content = []byte("testContent")
-	actualRenderedMarkdown := c.mmarkRender(ctx)
-	expectedRenderedMarkdown := []byte("<p>testContent</p>\n")
-	if !bytes.Equal(actualRenderedMarkdown, expectedRenderedMarkdown) {
-		t.Errorf("Actual rendered Markdown (%s) did not match expected markdown (%s)", actualRenderedMarkdown, expectedRenderedMarkdown)
-	}
-}
-
 func TestExtractTOCNormalContent(t *testing.T) {
 	content := []byte("<nav>\n<ul>\nTOC<li><a href=\"#")
 
@@ -501,16 +278,6 @@ func BenchmarkTotalWords(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		wordCount := TotalWords(totalWordsBenchmarkString)
-		if wordCount != 400 {
-			b.Fatal("Wordcount error")
-		}
-	}
-}
-
-func BenchmarkTotalWordsOld(b *testing.B) {
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		wordCount := totalWordsOld(totalWordsBenchmarkString)
 		if wordCount != 400 {
 			b.Fatal("Wordcount error")
 		}

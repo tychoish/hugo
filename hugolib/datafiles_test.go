@@ -16,7 +16,6 @@ package hugolib
 import (
 	"path/filepath"
 	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/gohugoio/hugo/common/loggers"
@@ -26,7 +25,7 @@ import (
 	"fmt"
 	"runtime"
 
-	"github.com/stretchr/testify/require"
+	qt "github.com/frankban/quicktest"
 )
 
 func TestDataDir(t *testing.T) {
@@ -290,6 +289,23 @@ func TestDataDirCollidingMapsAndArrays(t *testing.T) {
 	doTestDataDir(t, dd, expected, "theme", "mytheme")
 }
 
+// https://discourse.gohugo.io/t/recursive-data-file-parsing/26192
+func TestDataDirNestedDirectories(t *testing.T) {
+	t.Parallel()
+
+	var dd dataDir
+	dd.addSource("themes/mytheme/data/a.json", `["1", "2", "3"]`)
+	dd.addSource("data/test1/20/06/a.json", `{ "artist" : "Michael Brecker" }`)
+	dd.addSource("data/test1/20/05/b.json", `{ "artist" : "Charlie Parker" }`)
+
+	expected :=
+		map[string]interface{}{
+			"a":     []interface{}{"1", "2", "3"},
+			"test1": map[string]interface{}{"20": map[string]interface{}{"05": map[string]interface{}{"b": map[string]interface{}{"artist": "Charlie Parker"}}, "06": map[string]interface{}{"a": map[string]interface{}{"artist": "Michael Brecker"}}}}}
+
+	doTestDataDir(t, dd, expected, "theme", "mytheme")
+}
+
 type dataDir struct {
 	sources [][2]string
 }
@@ -377,6 +393,7 @@ func TestDataFromShortcode(t *testing.T) {
 
 	var (
 		cfg, fs = newTestCfg()
+		c       = qt.New(t)
 	)
 
 	writeSource(t, fs, "data/hugo.toml", "slogan = \"Hugo Rocks!\"")
@@ -392,7 +409,7 @@ Slogan from shortcode: {{< d >}}
 	buildSingleSite(t, deps.DepsCfg{Fs: fs, Cfg: cfg}, BuildCfg{})
 
 	content := readSource(t, fs, "public/c/index.html")
-	require.True(t, strings.Contains(content, "Slogan from template: Hugo Rocks!"), content)
-	require.True(t, strings.Contains(content, "Slogan from shortcode: Hugo Rocks!"), content)
 
+	c.Assert(content, qt.Contains, "Slogan from template: Hugo Rocks!")
+	c.Assert(content, qt.Contains, "Slogan from shortcode: Hugo Rocks!")
 }

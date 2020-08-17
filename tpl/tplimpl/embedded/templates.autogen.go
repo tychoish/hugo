@@ -19,12 +19,19 @@ package embedded
 // EmbeddedTemplates represents all embedded templates.
 var EmbeddedTemplates = [][2]string{
 	{`_default/robots.txt`, `User-agent: *`},
-	{`_default/rss.xml`, `{{- $pages := .Data.Pages -}}
+	{`_default/rss.xml`, `{{- $pctx := . -}}
+{{- if .IsHome -}}{{ $pctx = .Site }}{{- end -}}
+{{- $pages := slice -}}
+{{- if or $.IsHome $.IsSection -}}
+{{- $pages = $pctx.RegularPages -}}
+{{- else -}}
+{{- $pages = $pctx.Pages -}}
+{{- end -}}
 {{- $limit := .Site.Config.Services.RSS.Limit -}}
 {{- if ge $limit 1 -}}
 {{- $pages = $pages | first $limit -}}
 {{- end -}}
-{{- printf "<?xml version=\"1.0\" encoding=\"utf-8\" standalone=\"yes\" ?>" | safeHTML }}
+{{- printf "<?xml version=\"1.0\" encoding=\"utf-8\" standalone=\"yes\"?>" | safeHTML }}
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>{{ if eq  .Title  .Site.Title }}{{ .Site.Title }}{{ else }}{{ with .Title }}{{.}} on {{ end }}{{ .Site.Title }}{{ end }}</title>
@@ -36,9 +43,9 @@ var EmbeddedTemplates = [][2]string{
     <webMaster>{{.}}{{ with $.Site.Author.name }} ({{.}}){{end}}</webMaster>{{end}}{{ with .Site.Copyright }}
     <copyright>{{.}}</copyright>{{end}}{{ if not .Date.IsZero }}
     <lastBuildDate>{{ .Date.Format "Mon, 02 Jan 2006 15:04:05 -0700" | safeHTML }}</lastBuildDate>{{ end }}
-    {{ with .OutputFormats.Get "RSS" }}
-	{{ printf "<atom:link href=%q rel=\"self\" type=%q />" .Permalink .MediaType | safeHTML }}
-    {{ end }}
+    {{- with .OutputFormats.Get "RSS" -}}
+    {{ printf "<atom:link href=%q rel=\"self\" type=%q />" .Permalink .MediaType | safeHTML }}
+    {{- end -}}
     {{ range $pages }}
     <item>
       <title>{{ .Title }}</title>
@@ -50,8 +57,9 @@ var EmbeddedTemplates = [][2]string{
     </item>
     {{ end }}
   </channel>
-</rss>`},
-	{`_default/sitemap.xml`, `{{ printf "<?xml version=\"1.0\" encoding=\"utf-8\" standalone=\"yes\" ?>" | safeHTML }}
+</rss>
+`},
+	{`_default/sitemap.xml`, `{{ printf "<?xml version=\"1.0\" encoding=\"utf-8\" standalone=\"yes\"?>" | safeHTML }}
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
   xmlns:xhtml="http://www.w3.org/1999/xhtml">
   {{ range .Data.Pages }}
@@ -72,19 +80,21 @@ var EmbeddedTemplates = [][2]string{
                 />{{ end }}
   </url>
   {{ end }}
-</urlset>`},
-	{`_default/sitemapindex.xml`, `{{ printf "<?xml version=\"1.0\" encoding=\"utf-8\" standalone=\"yes\" ?>" | safeHTML }}
+</urlset>
+`},
+	{`_default/sitemapindex.xml`, `{{ printf "<?xml version=\"1.0\" encoding=\"utf-8\" standalone=\"yes\"?>" | safeHTML }}
 <sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-	{{ range . }}
-	<sitemap>
-	   	<loc>{{ .SitemapAbsURL }}</loc>
-		{{ if not .LastChange.IsZero }}
-	   	<lastmod>{{ .LastChange.Format "2006-01-02T15:04:05-07:00" | safeHTML }}</lastmod>
-		{{ end }}
-	</sitemap>
-	{{ end }}
+  {{ range . }}
+  <sitemap>
+    <loc>{{ .SitemapAbsURL }}</loc>
+    {{ if not .LastChange.IsZero }}
+      <lastmod>{{ .LastChange.Format "2006-01-02T15:04:05-07:00" | safeHTML }}</lastmod>
+    {{ end }}
+  </sitemap>
+  {{ end }}
 </sitemapindex>
 `},
+	{`alias.html`, `<!DOCTYPE html><html><head><title>{{ .Permalink }}</title><link rel="canonical" href="{{ .Permalink }}"/><meta name="robots" content="noindex"><meta charset="utf-8" /><meta http-equiv="refresh" content="0; url={{ .Permalink }}" /></head></html>`},
 	{`disqus.html`, `{{- $pc := .Site.Config.Privacy.Disqus -}}
 {{- if not $pc.Disable -}}
 {{ if .Site.DisqusShortname }}<div id="disqus_thread"></div>
@@ -183,9 +193,18 @@ if (!doNotTrack) {
 <meta property="og:description" content="{{ with .Description }}{{ . }}{{ else }}{{if .IsPage}}{{ .Summary }}{{ else }}{{ with .Site.Params.description }}{{ . }}{{ end }}{{ end }}{{ end }}" />
 <meta property="og:type" content="{{ if .IsPage }}article{{ else }}website{{ end }}" />
 <meta property="og:url" content="{{ .Permalink }}" />
-{{ with $.Param "images" }}{{ range first 6 . }}
+{{ with $.Params.images }}{{ range first 6 . -}}
 <meta property="og:image" content="{{ . | absURL }}" />
-{{ end }}{{ end }}
+{{ end }}{{ else -}}
+{{- $images := $.Resources.ByType "image" -}}
+{{- $featured := $images.GetMatch "*feature*" -}}
+{{- if not $featured }}{{ $featured = $images.GetMatch "{*cover*,*thumbnail*}" }}{{ end -}}
+{{- with $featured -}}
+<meta property="og:image" content="{{ $featured.Permalink }}"/>
+{{ else -}}
+{{- with $.Site.Params.images -}}
+<meta property="og:image" content="{{ index . 0 | absURL }}"/>
+{{ end }}{{ end }}{{ end }}
 
 {{- $iso8601 := "2006-01-02T15:04:05-07:00" -}}
 {{- if .IsPage }}
@@ -194,8 +213,7 @@ if (!doNotTrack) {
 {{ end }}
 {{- if not .Lastmod.IsZero }}<meta property="article:modified_time" {{ .Lastmod.Format $iso8601 | printf "content=%q" | safeHTMLAttr }} />{{ end }}
 {{- else }}
-{{- if not .Date.IsZero }}
-<meta property="og:updated_time" {{ .Date.Format $iso8601 | printf "content=%q" | safeHTMLAttr }} />
+{{- if not .Date.IsZero }}<meta property="og:updated_time" {{ .Lastmod.Format $iso8601 | printf "content=%q" | safeHTMLAttr }} />
 {{- end }}
 {{- end }}{{/* .IsPage */}}
 
@@ -230,60 +248,74 @@ if (!doNotTrack) {
 {{- with .Site.Social.facebook_admin }}<meta property="fb:admins" content="{{ . }}" />{{ end }}
 `},
 	{`pagination.html`, `{{ $pag := $.Paginator }}
-{{ if gt $pag.TotalPages 1 }}
+{{ if gt $pag.TotalPages 1 -}}
 <ul class="pagination">
-    {{ with $pag.First }}
-    <li class="page-item">
-        <a href="{{ .URL }}" class="page-link" aria-label="First"><span aria-hidden="true">&laquo;&laquo;</span></a>
-    </li>
-    {{ end }}
-    <li class="page-item{{ if not $pag.HasPrev }} disabled{{ end }}">
-    <a href="{{ if $pag.HasPrev }}{{ $pag.Prev.URL }}{{ end }}" class="page-link" aria-label="Previous"><span aria-hidden="true">&laquo;</span></a>
-    </li>
-    {{ $ellipsed := false }}
-    {{ $shouldEllipse := false }}
-    {{ range $pag.Pagers }}
-    {{ $right := sub .TotalPages .PageNumber }}
-    {{ $showNumber := or (le .PageNumber 3) (eq $right 0) }}
-    {{ $showNumber := or $showNumber (and (gt .PageNumber (sub $pag.PageNumber 2)) (lt .PageNumber (add $pag.PageNumber 2)))  }}
-    {{ if $showNumber }}
-        {{ $ellipsed = false }}
-        {{ $shouldEllipse = false }}
-    {{ else }}
-        {{ $shouldEllipse = not $ellipsed }}
-        {{ $ellipsed = true }}
-    {{ end }}
-    {{ if $showNumber }}
-    <li class="page-item{{ if eq . $pag }} active{{ end }}"><a class="page-link" href="{{ .URL }}">{{ .PageNumber }}</a></li>
-    {{ else if $shouldEllipse }}
-    <li class="page-item disabled"><span aria-hidden="true">&nbsp;&hellip;&nbsp;</span></li>
-    {{ end }}
-    {{ end }}
-    <li class="page-item{{ if not $pag.HasNext }} disabled{{ end }}">
-    <a href="{{ if $pag.HasNext }}{{ $pag.Next.URL }}{{ end }}" class="page-link" aria-label="Next"><span aria-hidden="true">&raquo;</span></a>
-    </li>
-    {{ with $pag.Last }}
-    <li class="page-item">
-        <a href="{{ .URL }}" class="page-link" aria-label="Last"><span aria-hidden="true">&raquo;&raquo;</span></a>
-    </li>
-    {{ end }}
+  {{ with $pag.First -}}
+  <li class="page-item">
+    <a href="{{ .URL }}" class="page-link" aria-label="First"><span aria-hidden="true">&laquo;&laquo;</span></a>
+  </li>
+  {{ end -}}
+  <li class="page-item{{ if not $pag.HasPrev }} disabled{{ end }}">
+    <a {{ if $pag.HasPrev }}href="{{ $pag.Prev.URL }}"{{ end }} class="page-link" aria-label="Previous"><span aria-hidden="true">&laquo;</span></a>
+  </li>
+  {{- $ellipsed := false -}}
+  {{- $shouldEllipse := false -}}
+  {{- range $pag.Pagers -}}
+  {{- $right := sub .TotalPages .PageNumber -}}
+  {{- $showNumber := or (le .PageNumber 3) (eq $right 0) -}}
+  {{- $showNumber := or $showNumber (and (gt .PageNumber (sub $pag.PageNumber 2)) (lt .PageNumber (add $pag.PageNumber 2))) -}}
+  {{- if $showNumber -}}
+    {{- $ellipsed = false -}}
+    {{- $shouldEllipse = false -}}
+  {{- else -}}
+    {{- $shouldEllipse = not $ellipsed -}}
+    {{- $ellipsed = true -}}
+  {{- end -}}
+  {{- if $showNumber }}
+  <li class="page-item{{ if eq . $pag }} active{{ end }}">
+    <a class="page-link" href="{{ .URL }}">{{ .PageNumber }}</a>
+  </li>
+  {{- else if $shouldEllipse }}
+  <li class="page-item disabled">
+    <span aria-hidden="true">&nbsp;&hellip;&nbsp;</span>
+  </li>
+  {{- end -}}
+  {{- end }}
+  <li class="page-item{{ if not $pag.HasNext }} disabled{{ end }}">
+    <a {{ if $pag.HasNext }}href="{{ $pag.Next.URL }}"{{ end }} class="page-link" aria-label="Next"><span aria-hidden="true">&raquo;</span></a>
+  </li>
+  {{- with $pag.Last }}
+  <li class="page-item">
+    <a href="{{ .URL }}" class="page-link" aria-label="Last"><span aria-hidden="true">&raquo;&raquo;</span></a>
+  </li>
+  {{- end }}
 </ul>
-{{ end }}`},
-	{`schema.html`, `
-<meta itemprop="name" content="{{ .Title }}">
+{{ end }}
+`},
+	{`schema.html`, `<meta itemprop="name" content="{{ .Title }}">
 <meta itemprop="description" content="{{ with .Description }}{{ . }}{{ else }}{{if .IsPage}}{{ .Summary }}{{ else }}{{ with .Site.Params.description }}{{ . }}{{ end }}{{ end }}{{ end }}">
 
-{{if .IsPage}}{{ $ISO8601 := "2006-01-02T15:04:05-07:00" }}{{ if not .PublishDate.IsZero }}
-<meta itemprop="datePublished" content="{{ .PublishDate.Format $ISO8601 | safeHTML }}" />{{ end }}
-{{ if not .Lastmod.IsZero }}<meta itemprop="dateModified" content="{{ .Lastmod.Format $ISO8601 | safeHTML }}" />{{ end }}
+{{- if .IsPage }}{{ $ISO8601 := "2006-01-02T15:04:05-07:00" }}{{ if not .PublishDate.IsZero }}
+<meta itemprop="datePublished" {{ .PublishDate.Format $ISO8601 | printf "content=%q" | safeHTMLAttr }} />{{ end }}
+{{ if not .Lastmod.IsZero }}<meta itemprop="dateModified" {{ .Lastmod.Format $ISO8601 | printf "content=%q" | safeHTMLAttr }} />{{ end }}
 <meta itemprop="wordCount" content="{{ .WordCount }}">
-{{ with .Params.images }}{{ range first 6 . }}
-  <meta itemprop="image" content="{{ . | absURL }}">
-{{ end }}{{ end }}
+{{ with $.Params.images }}{{ range first 6 . -}}
+<meta itemprop="image" content="{{ . | absURL }}">
+{{ end }}{{ else -}}
+{{- $images := $.Resources.ByType "image" -}}
+{{- $featured := $images.GetMatch "*feature*" -}}
+{{- if not $featured }}{{ $featured = $images.GetMatch "{*cover*,*thumbnail*}" }}{{ end -}}
+{{- with $featured -}}
+<meta itemprop="image" content="{{ $featured.Permalink }}">
+{{ else -}}
+{{- with $.Site.Params.images -}}
+<meta itemprop="image" content="{{ index . 0 | absURL }}"/>
+{{ end }}{{ end }}{{ end }}
 
 <!-- Output all taxonomies as schema.org keywords -->
 <meta itemprop="keywords" content="{{ if .IsPage}}{{ range $index, $tag := .Params.tags }}{{ $tag }},{{ end }}{{ else }}{{ range $plural, $terms := .Site.Taxonomies }}{{ range $term, $val := $terms }}{{ printf "%s," $term }}{{ end }}{{ end }}{{ end }}" />
-{{ end }}`},
+{{- end }}
+`},
 	{`shortcodes/__h_simple_assets.html`, `{{ define "__h_simple_css" }}{{/* These template definitions are global. */}}
 {{- if not (.Page.Scratch.Get "__h_simple_css") -}}
 {{/* Only include once */}}
@@ -348,7 +380,8 @@ if (!doNotTrack) {
     {{- end }}
 </figure>
 `},
-	{`shortcodes/gist.html`, `<script type="application/javascript" src="//gist.github.com/{{ index .Params 0 }}/{{ index .Params 1 }}.js{{if len .Params | eq 3 }}?file={{ index .Params 2 }}{{end}}"></script>`},
+	{`shortcodes/gist.html`, `<script type="application/javascript" src="https://gist.github.com/{{ index .Params 0 }}/{{ index .Params 1 }}.js{{if len .Params | eq 3 }}?file={{ index .Params 2 }}{{end}}"></script>
+`},
 	{`shortcodes/highlight.html`, `{{ if len .Params | eq 2 }}{{ highlight (trim .Inner "\n\r") (.Get 0) (.Get 1) }}{{ else }}{{ highlight (trim .Inner "\n\r") (.Get 0) "" }}{{ end }}`},
 	{`shortcodes/instagram.html`, `{{- $pc := .Page.Site.Config.Privacy.Instagram -}}
 {{- if not $pc.Disable -}}
@@ -377,7 +410,7 @@ if (!doNotTrack) {
 	<div class="card-header">
     <a href="{{ $item.author_url | safeURL }}" class="card-link">{{ $item.author_name }}</a>
   </div>
-	<a href="{{ $mediaURL }}" target="_blank"><img class="card-img-top img-fluid" src="{{ $item.thumbnail_url }}" width="{{ $item.thumbnail_width }}"  height="{{ $item.thumbnail_height }}" alt="Instagram Image"></a>
+	<a href="{{ $mediaURL }}" rel="noopener" target="_blank"><img class="card-img-top img-fluid" src="{{ $item.thumbnail_url }}" width="{{ $item.thumbnail_width }}"  height="{{ $item.thumbnail_height }}" alt="Instagram Image"></a>
 	<div class="card-body">
 		{{ if not $hideCaption }}<p class="card-text"><a href="{{ $item.author_url | safeURL }}" class="card-link">{{ $item.author_name }}</a> {{ $item.title}}</p>{{ end }}
 		<a href="{{ $item.author_url | safeURL }}" class="card-link">View More on Instagram</a>
@@ -419,7 +452,7 @@ if (!doNotTrack) {
 {{- if $pc.Simple -}}
 {{ template "_internal/shortcodes/twitter_simple.html" . }}
 {{- else -}}
-{{- $url := printf "https://api.twitter.com/1/statuses/oembed.json?id=%s&dnt=%t" (index .Params 0) $pc.EnableDNT -}}
+{{- $url := printf "https://api.twitter.com/1/statuses/oembed.json?id=%v&dnt=%t" (index .Params 0) $pc.EnableDNT -}}
 {{- $json := getJSON $url -}}
 {{ $json.html | safeHTML }}
 {{- end -}}
@@ -463,10 +496,10 @@ if (!doNotTrack) {
 {{ template "_internal/shortcodes/vimeo_simple.html" . }}
 {{- else -}}
 {{ if .IsNamedParams }}<div {{ if .Get "class" }}class="{{ .Get "class" }}"{{ else }}style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden;"{{ end }}>
-  <iframe src="//player.vimeo.com/video/{{ .Get "id" }}" {{ if not (.Get "class") }}style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border:0;" {{ end }}webkitallowfullscreen mozallowfullscreen allowfullscreen></iframe>
+  <iframe src="https://player.vimeo.com/video/{{ .Get "id" }}" {{ if not (.Get "class") }}style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border:0;" {{ end }}{{ if .Get "title"}}title="{{ .Get "title" }}"{{ else }}title="vimeo video"{{ end }} webkitallowfullscreen mozallowfullscreen allowfullscreen></iframe>
  </div>{{ else }}
-<div {{ if len .Params | eq 2 }}class="{{ .Get 1 }}"{{ else }}style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden;"{{ end }}>
-  <iframe src="//player.vimeo.com/video/{{ .Get 0 }}" {{ if len .Params | eq 1 }}style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border:0;" {{ end }}webkitallowfullscreen mozallowfullscreen allowfullscreen></iframe>
+<div {{ if gt (len .Params) 1 }}class="{{ .Get 1 }}"{{ else }}style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden;"{{ end }}>
+  <iframe src="https://player.vimeo.com/video/{{ .Get 0 }}" {{ if len .Params | eq 1 }}style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border:0;" {{ end }}{{ if len .Params | eq 3 }}title="{{ .Get 2 }}"{{ else }}title="vimeo video"{{ end }} webkitallowfullscreen mozallowfullscreen allowfullscreen></iframe>
  </div>
 {{ end }}
 {{- end -}}
@@ -483,7 +516,7 @@ if (!doNotTrack) {
 {{ $secondClass := "s_video_simple" }}
 <div class="{{ $secondClass }} {{ $class }}">
 {{- with $item }}
-<a href="{{ .provider_url }}{{ .video_id }}" target="_blank">
+<a href="{{ .provider_url }}{{ .video_id }}" rel="noopener" target="_blank">
 {{ $thumb := .thumbnail_url }}
 {{ $original := $thumb | replaceRE "(_.*\\.)" "." }}
 <img src="{{ $thumb }}" srcset="{{ $thumb }} 1x, {{ $original }} 2x" alt="{{ .title }}">
@@ -496,7 +529,7 @@ if (!doNotTrack) {
 {{- $id := .Get "id" | default (.Get 0) -}}
 {{- $class := .Get "class" | default (.Get 1) }}
 <div {{ with $class }}class="{{ . }}"{{ else }}style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden;"{{ end }}>
-  <iframe src="//{{ $ytHost }}/embed/{{ $id }}{{ with .Get "autoplay" }}{{ if eq . "true" }}?autoplay=1{{ end }}{{ end }}" {{ if not $class }}style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border:0;" {{ end }}allowfullscreen title="YouTube Video"></iframe>
+  <iframe src="https://{{ $ytHost }}/embed/{{ $id }}{{ with .Get "autoplay" }}{{ if eq . "true" }}?autoplay=1{{ end }}{{ end }}" {{ if not $class }}style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border:0;" {{ end }}allowfullscreen title="YouTube Video"></iframe>
 </div>
 {{ end -}}
 `},
@@ -506,7 +539,7 @@ if (!doNotTrack) {
 {{ else -}}
 {{- $images := $.Resources.ByType "image" -}}
 {{- $featured := $images.GetMatch "*feature*" -}}
-{{- $featured := cond (ne $featured nil) $featured ($images.GetMatch "{*cover*,*thumbnail*}") -}}
+{{- if not $featured }}{{ $featured = $images.GetMatch "{*cover*,*thumbnail*}" }}{{ end -}}
 {{- with $featured -}}
 <meta name="twitter:card" content="summary_large_image"/>
 <meta name="twitter:image" content="{{ $featured.Permalink }}"/>

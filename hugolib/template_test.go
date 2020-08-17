@@ -16,16 +16,20 @@ package hugolib
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/gohugoio/hugo/identity"
+
+	qt "github.com/frankban/quicktest"
 	"github.com/gohugoio/hugo/deps"
 	"github.com/gohugoio/hugo/hugofs"
+	"github.com/gohugoio/hugo/tpl"
 
 	"github.com/spf13/viper"
 )
 
 func TestTemplateLookupOrder(t *testing.T) {
-	t.Parallel()
 	var (
 		fs  *hugofs.Fs
 		cfg *viper.Viper
@@ -193,22 +197,26 @@ func TestTemplateLookupOrder(t *testing.T) {
 		},
 	} {
 
-		cfg, fs = newTestCfg()
-		th = testHelper{cfg, fs, t}
+		this := this
+		t.Run(this.name, func(t *testing.T) {
+			// TODO(bep) there are some function vars need to pull down here to enable => t.Parallel()
+			cfg, fs = newTestCfg()
+			th = newTestHelper(cfg, fs, t)
 
-		for i := 1; i <= 3; i++ {
-			writeSource(t, fs, filepath.Join("content", fmt.Sprintf("sect%d", i), fmt.Sprintf("page%d.md", i)), `---
+			for i := 1; i <= 3; i++ {
+				writeSource(t, fs, filepath.Join("content", fmt.Sprintf("sect%d", i), fmt.Sprintf("page%d.md", i)), `---
 title: Template test
 ---
 Some content
 `)
-		}
+			}
 
-		this.setup(t)
+			this.setup(t)
 
-		buildSingleSite(t, deps.DepsCfg{Fs: fs, Cfg: cfg}, BuildCfg{})
-		t.Log(this.name)
-		this.assert(t)
+			buildSingleSite(t, deps.DepsCfg{Fs: fs, Cfg: cfg}, BuildCfg{})
+			//helpers.PrintFs(s.BaseFs.Layouts.Fs, "", os.Stdout)
+			this.assert(t)
+		})
 
 	}
 }
@@ -234,6 +242,155 @@ Page Content
 	b.CreateSites().Build(BuildCfg{})
 
 	b.AssertFileContent("public/page/index.html", "Base: Hi!?")
+
+}
+
+func TestTemplateManyBaseTemplates(t *testing.T) {
+	t.Parallel()
+	b := newTestSitesBuilder(t).WithSimpleConfigFile()
+
+	numPages := 100 // To get some parallelism
+
+	pageTemplate := `---
+title: "Page %d"
+layout: "layout%d"
+---
+
+Content.
+`
+
+	singleTemplate := `
+{{ define "main" }}%d{{ end }}
+`
+	baseTemplate := `
+Base %d: {{ block "main" . }}FOO{{ end }}
+`
+
+	for i := 0; i < numPages; i++ {
+		id := i + 1
+		b.WithContent(fmt.Sprintf("page%d.md", id), fmt.Sprintf(pageTemplate, id, id))
+		b.WithTemplates(fmt.Sprintf("_default/layout%d.html", id), fmt.Sprintf(singleTemplate, id))
+		b.WithTemplates(fmt.Sprintf("_default/layout%d-baseof.html", id), fmt.Sprintf(baseTemplate, id))
+	}
+
+	b.Build(BuildCfg{})
+	for i := 0; i < numPages; i++ {
+		id := i + 1
+		b.AssertFileContent(fmt.Sprintf("public/page%d/index.html", id), fmt.Sprintf(`Base %d: %d`, id, id))
+	}
+
+}
+
+// https://github.com/gohugoio/hugo/issues/6790
+func TestTemplateNoBasePlease(t *testing.T) {
+	t.Parallel()
+	b := newTestSitesBuilder(t).WithSimpleConfigFile()
+
+	b.WithTemplates("_default/list.html", `
+	{{ define "main" }}
+	  Bonjour
+	{{ end }}
+
+	{{ printf "list" }}
+
+
+	`)
+
+	b.WithTemplates(
+		"_default/single.html", `
+{{ printf "single" }}
+{{ define "main" }}
+  Bonjour
+{{ end }}
+
+
+`)
+
+	b.WithContent("blog/p1.md", `---
+title: The Page
+---
+`)
+
+	b.Build(BuildCfg{})
+
+	b.AssertFileContent("public/blog/p1/index.html", `single`)
+	b.AssertFileContent("public/blog/index.html", `list`)
+
+}
+
+// https://github.com/gohugoio/hugo/issues/6816
+func TestTemplateBaseWithComment(t *testing.T) {
+	t.Parallel()
+	b := newTestSitesBuilder(t).WithSimpleConfigFile()
+	b.WithTemplatesAdded(
+		"baseof.html", `Base: {{ block "main" . }}{{ end }}`,
+		"index.html", `
+	{{/*  A comment */}}
+	{{ define "main" }}
+	  Bonjour
+	{{ end }}
+
+
+	`)
+
+	b.Build(BuildCfg{})
+	b.AssertFileContent("public/index.html", `Base:
+Bonjour`)
+
+}
+
+func TestTemplateLookupSite(t *testing.T) {
+	t.Run("basic", func(t *testing.T) {
+		t.Parallel()
+		b := newTestSitesBuilder(t).WithSimpleConfigFile()
+		b.WithTemplates(
+			"_default/single.html", `Single: {{ .Title }}`,
+			"_default/list.html", `List: {{ .Title }}`,
+		)
+
+		createContent := func(title string) string {
+			return fmt.Sprintf(`---
+title: %s
+---`, title)
+		}
+
+		b.WithContent(
+			"_index.md", createContent("Home Sweet Home"),
+			"p1.md", createContent("P1"))
+
+		b.CreateSites().Build(BuildCfg{})
+		b.AssertFileContent("public/index.html", `List: Home Sweet Home`)
+		b.AssertFileContent("public/p1/index.html", `Single: P1`)
+	})
+
+	t.Run("baseof", func(t *testing.T) {
+		t.Parallel()
+		b := newTestSitesBuilder(t).WithDefaultMultiSiteConfig()
+
+		b.WithTemplatesAdded(
+			"index.html", `{{ define "main" }}Main Home En{{ end }}`,
+			"index.fr.html", `{{ define "main" }}Main Home Fr{{ end }}`,
+			"baseof.html", `Baseof en: {{ block "main" . }}main block{{ end }}`,
+			"baseof.fr.html", `Baseof fr: {{ block "main" . }}main block{{ end }}`,
+			"mysection/baseof.html", `Baseof mysection: {{ block "main" .  }}mysection block{{ end }}`,
+			"_default/single.html", `{{ define "main" }}Main Default Single{{ end }}`,
+			"_default/list.html", `{{ define "main" }}Main Default List{{ end }}`,
+		)
+
+		b.WithContent("mysection/p1.md", `---
+title: My Page
+---
+
+`)
+
+		b.CreateSites().Build(BuildCfg{})
+
+		b.AssertFileContent("public/en/index.html", `Baseof en: Main Home En`)
+		b.AssertFileContent("public/fr/index.html", `Baseof fr: Main Home Fr`)
+		b.AssertFileContent("public/en/mysection/index.html", `Baseof mysection: Main Default List`)
+		b.AssertFileContent("public/en/mysection/p1/index.html", `Baseof mysection: Main Default Single`)
+
+	})
 
 }
 
@@ -302,6 +459,264 @@ complex: 80: {{ partial "complex.tpl" 38 }}
 		"dollarContext: 60: 60",
 		"adder: 70: 70",
 		"complex: 80: 80",
+	)
+
+}
+
+func TestPartialCached(t *testing.T) {
+	b := newTestSitesBuilder(t)
+
+	b.WithTemplatesAdded(
+		"index.html", `
+{{ $key1 := (dict "a" "av" ) }}
+{{ $key2 := (dict "a" "av2" ) }}
+Partial cached1: {{ partialCached "p1" "input1" $key1 }}
+Partial cached2: {{ partialCached "p1" "input2" $key1 }}
+Partial cached3: {{ partialCached "p1" "input3" $key2 }}
+`,
+
+		"partials/p1.html", `partial: {{ . }}`,
+	)
+
+	b.Build(BuildCfg{})
+
+	b.AssertFileContent("public/index.html", `
+ Partial cached1: partial: input1
+ Partial cached2: partial: input1
+ Partial cached3: partial: input3
+`)
+}
+
+// https://github.com/gohugoio/hugo/issues/6615
+func TestTemplateTruth(t *testing.T) {
+	b := newTestSitesBuilder(t)
+	b.WithTemplatesAdded("index.html", `
+{{ $p := index site.RegularPages 0 }}
+{{ $zero := $p.ExpiryDate }}
+{{ $notZero := time.Now }}
+
+if: Zero: {{ if $zero }}FAIL{{ else }}OK{{ end }}
+if: Not Zero: {{ if $notZero }}OK{{ else }}Fail{{ end }}
+not: Zero: {{ if not $zero }}OK{{ else }}FAIL{{ end }}
+not: Not Zero: {{ if not $notZero }}FAIL{{ else }}OK{{ end }}
+
+with: Zero {{ with $zero }}FAIL{{ else }}OK{{ end }}
+
+`)
+
+	b.Build(BuildCfg{})
+
+	b.AssertFileContent("public/index.html", `
+if: Zero: OK
+if: Not Zero: OK
+not: Zero: OK
+not: Not Zero: OK
+with: Zero OK
+`)
+}
+
+func TestTemplateDependencies(t *testing.T) {
+	b := newTestSitesBuilder(t).Running()
+
+	b.WithTemplates("index.html", `
+{{ $p := site.GetPage "p1" }}
+{{ partial "p1.html"  $p }}
+{{ partialCached "p2.html" "foo" }}
+{{ partials.Include "p3.html" "data" }}
+{{ partials.IncludeCached "p4.html" "foo" }}
+{{ $p := partial "p5" }}
+{{ partial "sub/p6.html" }}
+{{ partial "P7.html" }}
+{{ template "_default/foo.html" }}
+Partial nested: {{ partial "p10" }}
+
+`,
+		"partials/p1.html", `ps: {{ .Render "li" }}`,
+		"partials/p2.html", `p2`,
+		"partials/p3.html", `p3`,
+		"partials/p4.html", `p4`,
+		"partials/p5.html", `p5`,
+		"partials/sub/p6.html", `p6`,
+		"partials/P7.html", `p7`,
+		"partials/p8.html", `p8 {{ partial "p9.html" }}`,
+		"partials/p9.html", `p9`,
+		"partials/p10.html", `p10 {{ partial "p11.html" }}`,
+		"partials/p11.html", `p11`,
+		"_default/foo.html", `foo`,
+		"_default/li.html", `li {{ partial "p8.html" }}`,
+	)
+
+	b.WithContent("p1.md", `---
+title: P1
+---
+
+
+`)
+
+	b.Build(BuildCfg{})
+
+	s := b.H.Sites[0]
+
+	templ, found := s.lookupTemplate("index.html")
+	b.Assert(found, qt.Equals, true)
+
+	idset := make(map[identity.Identity]bool)
+	collectIdentities(idset, templ.(tpl.Info))
+	b.Assert(idset, qt.HasLen, 10)
+
+}
+
+func TestTemplateGoIssues(t *testing.T) {
+	b := newTestSitesBuilder(t)
+
+	b.WithTemplatesAdded(
+		"index.html", `
+{{ $title := "a & b" }}
+<script type="application/ld+json">{"@type":"WebPage","headline":"{{$title}}"}</script>
+`,
+	)
+
+	b.Build(BuildCfg{})
+
+	b.AssertFileContent("public/index.html", `
+<script type="application/ld+json">{"@type":"WebPage","headline":"a \u0026 b"}</script>
+
+`)
+}
+
+func collectIdentities(set map[identity.Identity]bool, provider identity.Provider) {
+	if ids, ok := provider.(identity.IdentitiesProvider); ok {
+		for _, id := range ids.GetIdentities() {
+			collectIdentities(set, id)
+		}
+	} else {
+		set[provider.GetIdentity()] = true
+	}
+}
+
+func ident(level int) string {
+	return strings.Repeat(" ", level)
+}
+
+func TestPartialInline(t *testing.T) {
+
+	b := newTestSitesBuilder(t)
+
+	b.WithContent("p1.md", "")
+
+	b.WithTemplates(
+		"index.html", `
+
+{{ $p1 := partial "p1" . }}
+{{ $p2 := partial "p2" . }}
+
+P1: {{ $p1 }}
+P2: {{ $p2 }}
+
+{{ define "partials/p1" }}Inline: p1{{ end }}
+
+{{ define "partials/p2" }}
+{{ $value := 32 }}
+{{ return $value }}
+{{ end }}
+
+
+`,
+	)
+
+	b.CreateSites().Build(BuildCfg{})
+
+	b.AssertFileContent("public/index.html",
+		`
+P1: Inline: p1
+P2: 32`,
+	)
+
+}
+
+func TestPartialInlineBase(t *testing.T) {
+
+	b := newTestSitesBuilder(t)
+
+	b.WithContent("p1.md", "")
+
+	b.WithTemplates(
+		"baseof.html", `{{ $p3 := partial "p3" . }}P3: {{ $p3 }}
+{{ block "main" . }}{{ end }}{{ define "partials/p3" }}Inline: p3{{ end }}`,
+		"index.html", `
+{{ define "main" }}
+
+{{ $p1 := partial "p1" . }}
+{{ $p2 := partial "p2" . }}
+
+P1: {{ $p1 }}
+P2: {{ $p2 }}
+
+{{ end }}
+
+
+{{ define "partials/p1" }}Inline: p1{{ end }}
+
+{{ define "partials/p2" }}
+{{ $value := 32 }}
+{{ return $value }}
+{{ end }}
+
+
+`,
+	)
+
+	b.CreateSites().Build(BuildCfg{})
+
+	b.AssertFileContent("public/index.html",
+		`
+P1: Inline: p1
+P2: 32
+P3: Inline: p3
+`,
+	)
+
+}
+
+// https://github.com/gohugoio/hugo/issues/7478
+func TestBaseWithAndWithoutDefine(t *testing.T) {
+
+	b := newTestSitesBuilder(t)
+
+	b.WithContent("p1.md", "---\ntitle: P\n---\nContent")
+
+	b.WithTemplates(
+		"_default/baseof.html", `
+::Header Start:{{ block "header" . }}{{ end }}:Header End:
+::{{ block "main" . }}Main{{ end }}::
+`, "index.html", `
+{{ define "header" }}
+Home Header
+{{ end }}
+{{ define "main" }}
+This is home main
+{{ end }}
+`,
+
+		"_default/single.html", `
+{{ define "main" }}
+This is single main
+{{ end }}
+`,
+	)
+
+	b.CreateSites().Build(BuildCfg{})
+
+	b.AssertFileContent("public/index.html", `
+Home Header
+This is home main
+`,
+	)
+
+	b.AssertFileContent("public/p1/index.html", `
+ ::Header Start::Header End:
+This is single main
+`,
 	)
 
 }

@@ -23,7 +23,7 @@ toc: true
 
 ## Front Matter Formats
 
-Hugo supports three formats for front matter, each with their own identifying tokens.
+Hugo supports four formats for front matter, each with their own identifying tokens.
 
 TOML
 : identified by opening and closing `+++`.
@@ -33,6 +33,10 @@ YAML
 
 JSON
 : a single JSON object surrounded by '`{`' and '`}`', followed by a new line.
+
+ORG
+: a group of Org mode keywords in the format '`#+KEY: VALUE`'. Any line that does not start with `#+` ends the front matter section.
+  Keyword values can be either strings (`#+KEY: VALUE`) or a whitespace separated list of strings (`#+KEY[]: VALUE_1 VALUE_2`).
 
 ### Example
 
@@ -59,6 +63,9 @@ aliases
 
 audio
 : an array of paths to audio files related to the page; used by the `opengraph` [internal template](/templates/internal) to populate `og:audio`.
+
+cascade
+: a map of Front Matter keys whose values are passed down to the page's descendents unless overwritten by self or a closer ancestor's cascade. See [Front Matter Cascade](#front-matter-cascade) for details.
 
 date
 : the datetime assigned to this page. This is usually fetched from the `date` field in front matter, but this behaviour is configurable.
@@ -128,7 +135,7 @@ videos
 : an array of paths to videos related to the page; used by the `opengraph` [internal template](/templates/internal) to populate `og:video`.
 
 weight
-: used for [ordering your content in lists][ordering]. Lower weight gets higher precedence. So content with lower weight will come first.
+: used for [ordering your content in lists][ordering]. Lower weight gets higher precedence. So content with lower weight will come first. If set, weights should be non-zero, as 0 is interpreted as an *unset* weight.
 
 \<taxonomies\>
 : field name of the *plural* form of the index. See `tags` and `categories` in the above front matter examples. _Note that the plural form of user-defined taxonomies cannot be the same as any of the predefined front matter variables._
@@ -148,6 +155,24 @@ include_toc: true
 show_comments: false
 {{</ code-toggle >}}
 
+## Front Matter Cascade
+
+Any node or section can pass down to descendents a set of Front Matter values as long as defined underneath the reserved `cascade` Front Matter key.
+
+### Example
+
+In `content/blog/_index.md`
+
+{{< code-toggle copy="false" >}}
+title: Blog
+cascade:
+  banner: images/typewriter.jpg
+{{</ code-toggle >}}
+
+With the above example the Blog section page and its descendents will return `images/typewriter.jpg` when `.Params.banner` is invoked unless:
+
+- Said descendent has its own `banner` value set 
+- Or a closer ancestor node has its own `cascade.banner` value set.
 
 ## Order Content Through Front Matter
 
@@ -164,7 +189,7 @@ It's possible to set some options for Markdown rendering in a content's front ma
 * [JSON Spec][json]
 
 [variables]: /variables/
-[aliases]: /content-management/urls/#aliases/
+[aliases]: /content-management/urls/#aliases
 [archetype]: /content-management/archetypes/
 [bylinktitle]: /templates/lists/#by-link-title
 [config]: /getting-started/configuration/ "Hugo documentation for site configuration"
@@ -184,4 +209,4 @@ It's possible to set some options for Markdown rendering in a content's front ma
 [toml]: https://github.com/toml-lang/toml "Specification for TOML, Tom's Obvious Minimal Language"
 [urls]: /content-management/urls/
 [variables]: /variables/
-[yaml]: http://yaml.org/spec/ "Specification for YAML, YAML Ain't Markup Language"
+[yaml]: https://yaml.org/spec/ "Specification for YAML, YAML Ain't Markup Language"

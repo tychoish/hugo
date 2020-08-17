@@ -44,7 +44,7 @@ toc: true
 * Automatic and user defined [content summaries][]
 * [Shortcodes][] to enable rich content inside of Markdown
 * ["Minutes to Read"][pagevars] functionality
-* ["Wordcount"][pagevars] functionality
+* ["WordCount"][pagevars] functionality
 
 ## Additional Features
 
@@ -52,7 +52,7 @@ toc: true
 * Integrated [Google Analytics][] support
 * Automatic [RSS][] creation
 * Support for [Go][], [Amber], and [Ace][] HTML templates
-* [Syntax highlighting][] powered by [Chroma][] (partly compatible with Pygments)
+* [Syntax highlighting][] powered by [Chroma][]
 
 
 [Ace]: /templates/alternatives/
@@ -66,7 +66,7 @@ toc: true
 [Extremely fast]: https://github.com/bep/hugo-benchmark
 [front matter]: /content-management/front-matter/
 [functions]: /functions/
-[Go]: http://golang.org/pkg/html/template/
+[Go]: https://golang.org/pkg/html/template/
 [Google Analytics]: https://google-analytics.com/
 [homepage]: /templates/homepage/
 [hostanywhere]: /hosting-and-deployment/

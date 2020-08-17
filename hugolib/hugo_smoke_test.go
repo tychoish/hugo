@@ -18,13 +18,34 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	qt "github.com/frankban/quicktest"
 )
+
+// The most basic build test.
+func TestHello(t *testing.T) {
+	t.Parallel()
+	b := newTestSitesBuilder(t)
+	b.WithConfigFile("toml", `
+baseURL="https://example.org"
+disableKinds = ["term", "taxonomy", "section", "page"]
+`)
+	b.WithContent("p1", `
+---
+title: Page
+---
+
+`)
+	b.WithTemplates("index.html", `Site: {{ .Site.Language.Lang | upper }}`)
+
+	b.Build(BuildCfg{})
+
+	b.AssertFileContent("public/index.html", `Site: EN`)
+}
 
 func TestSmoke(t *testing.T) {
 	t.Parallel()
 
-	assert := require.New(t)
+	c := qt.New(t)
 
 	const configFile = `
 baseURL = "https://example.com"
@@ -143,8 +164,8 @@ Some **Markdown** in JSON shortcode.
 	const (
 		commonPageTemplate            = `|{{ .Kind }}|{{ .Title }}|{{ .Path }}|{{ .Summary }}|{{ .Content }}|RelPermalink: {{ .RelPermalink }}|WordCount: {{ .WordCount }}|Pages: {{ .Pages }}|Data Pages: Pages({{ len .Data.Pages }})|Resources: {{ len .Resources }}|Summary: {{ .Summary }}`
 		commonPaginatorTemplate       = `|Paginator: {{ with .Paginator }}{{ .PageNumber }}{{ else }}NIL{{ end }}`
-		commonListTemplateNoPaginator = `|{{ range $i, $e := (.Pages | first 1) }}|Render {{ $i }}: {{ .Kind }}|{{ .Render "li" }}|{{ end }}|Site params: {{ $.Site.Params.hugo }}|RelPermalink: {{ .RelPermalink }}`
-		commonListTemplate            = commonPaginatorTemplate + `|{{ range $i, $e := (.Pages | first 1) }}|Render {{ $i }}: {{ .Kind }}|{{ .Render "li" }}|{{ end }}|Site params: {{ $.Site.Params.hugo }}|RelPermalink: {{ .RelPermalink }}`
+		commonListTemplateNoPaginator = `|{{ $pages := .Pages }}{{ if .IsHome }}{{ $pages = .Site.RegularPages }}{{ end }}{{ range $i, $e := ($pages | first 1) }}|Render {{ $i }}: {{ .Kind }}|{{ .Render "li" }}|{{ end }}|Site params: {{ $.Site.Params.hugo }}|RelPermalink: {{ .RelPermalink }}`
+		commonListTemplate            = commonPaginatorTemplate + `|{{ $pages := .Pages }}{{ if .IsHome }}{{ $pages = .Site.RegularPages }}{{ end }}{{ range $i, $e := ($pages | first 1) }}|Render {{ $i }}: {{ .Kind }}|{{ .Render "li" }}|{{ end }}|Site params: {{ $.Site.Params.hugo }}|RelPermalink: {{ .RelPermalink }}`
 		commonShortcodeTemplate       = `|{{ .Name }}|{{ .Ordinal }}|{{ .Page.Summary }}|{{ .Page.Content }}|WordCount: {{ .Page.WordCount }}`
 		prevNextTemplate              = `|Prev: {{ with .Prev }}{{ .RelPermalink }}{{ end }}|Next: {{ with .Next }}{{ .RelPermalink }}{{ end }}`
 		prevNextInSectionTemplate     = `|PrevInSection: {{ with .PrevInSection }}{{ .RelPermalink }}{{ end }}|NextInSection: {{ with .NextInSection }}{{ .RelPermalink }}{{ end }}`
@@ -193,7 +214,7 @@ Some **Markdown** in JSON shortcode.
 	b.AssertFileContent("public/index.html",
 		"home|In English",
 		"Site params: Rules",
-		"Pages: Pages(18)|Data Pages: Pages(18)",
+		"Pages: Pages(6)|Data Pages: Pages(6)",
 		"Paginator: 1",
 		"First Site: In English",
 		"RelPermalink: /",
@@ -203,8 +224,8 @@ Some **Markdown** in JSON shortcode.
 
 	// Check RSS
 	rssHome := b.FileContent("public/index.xml")
-	assert.Contains(rssHome, `<atom:link href="https://example.com/index.xml" rel="self" type="application/rss+xml" />`)
-	assert.Equal(3, strings.Count(rssHome, "<item>")) // rssLimit = 3
+	c.Assert(rssHome, qt.Contains, `<atom:link href="https://example.com/index.xml" rel="self" type="application/rss+xml" />`)
+	c.Assert(strings.Count(rssHome, "<item>"), qt.Equals, 3) // rssLimit = 3
 
 	// .Render should use template/content from the current output format
 	// even if that output format isn't configured for that page.

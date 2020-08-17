@@ -14,7 +14,7 @@
 package config
 
 import (
-	"github.com/spf13/cast"
+	"github.com/gohugoio/hugo/common/types"
 )
 
 // Provider provides the configuration settings for Hugo.
@@ -35,10 +35,7 @@ type Provider interface {
 // we do not attempt to split it into fields.
 func GetStringSlicePreserveString(cfg Provider, key string) []string {
 	sd := cfg.Get(key)
-	if sds, ok := sd.(string); ok {
-		return []string{sds}
-	}
-	return cast.ToStringSlice(sd)
+	return types.ToStringSlicePreserveString(sd)
 }
 
 // SetBaseTestDefaults provides some common config defaults used in tests.

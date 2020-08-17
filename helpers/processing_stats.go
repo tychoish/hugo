@@ -119,5 +119,4 @@ func ProcessingStatsTable(w io.Writer, stats ...*ProcessingStats) {
 	table.SetHeader(names)
 	table.SetBorder(false)
 	table.Render()
-
 }

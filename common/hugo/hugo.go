@@ -16,6 +16,9 @@ package hugo
 import (
 	"fmt"
 	"html/template"
+	"os"
+
+	"github.com/gohugoio/hugo/config"
 )
 
 const (
@@ -54,6 +57,10 @@ func (i Info) Generator() template.HTML {
 	return template.HTML(fmt.Sprintf(`<meta name="generator" content="Hugo %s" />`, CurrentVersion.String()))
 }
 
+func (i Info) IsProduction() bool {
+	return i.Environment == EnvironmentProduction
+}
+
 // NewInfo creates a new Hugo Info object.
 func NewInfo(environment string) Info {
 	if environment == "" {
@@ -64,4 +71,10 @@ func NewInfo(environment string) Info {
 		BuildDate:   buildDate,
 		Environment: environment,
 	}
+}
+
+func GetExecEnviron(cfg config.Provider) []string {
+	env := os.Environ()
+	config.SetEnvVars(&env, "HUGO_ENVIRONMENT", cfg.GetString("environment"))
+	return env
 }

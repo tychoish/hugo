@@ -14,10 +14,11 @@
 package commands
 
 import (
+	"fmt"
 	"os"
+	"time"
 
 	"github.com/gohugoio/hugo/hugolib/paths"
-	"github.com/tychoish/shimgo"
 
 	"github.com/gohugoio/hugo/common/hugo"
 	"github.com/gohugoio/hugo/common/loggers"
@@ -46,15 +47,16 @@ func (b *commandsBuilder) addAll() *commandsBuilder {
 		b.newServerCmd(),
 		newVersionCmd(),
 		newEnvCmd(),
-		newConfigCmd(),
+		b.newConfigCmd(),
 		newCheckCmd(),
-		newDeployCmd(),
-		newConvertCmd(),
+		b.newDeployCmd(),
+		b.newConvertCmd(),
 		b.newNewCmd(),
-		newListCmd(),
+		b.newListCmd(),
 		newImportCmd(),
 		newGenCmd(),
 		createReleaser(),
+		b.newModCmd(),
 	)
 
 	return b
@@ -63,7 +65,6 @@ func (b *commandsBuilder) addAll() *commandsBuilder {
 func (b *commandsBuilder) build() *hugoCmd {
 	h := b.newHugoCmd()
 	addCommands(h.getCommand(), b.commands...)
-
 	return h
 }
 
@@ -110,6 +111,12 @@ func (b *commandsBuilder) newBuilderCmd(cmd *cobra.Command) *baseBuilderCmd {
 	return bcmd
 }
 
+func (b *commandsBuilder) newBuilderBasicCmd(cmd *cobra.Command) *baseBuilderCmd {
+	bcmd := &baseBuilderCmd{commandsBuilder: b, baseCmd: &baseCmd{cmd: cmd}}
+	bcmd.hugoBuilderCommon.handleCommonBuilderFlags(cmd)
+	return bcmd
+}
+
 func (c *baseCmd) flagsToConfig(cfg config.Provider) {
 	initializeFlags(c.cmd, cfg)
 }
@@ -147,6 +154,7 @@ built with love by spf13 and friends in Go.
 
 Complete documentation is available at http://gohugo.io/.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			defer cc.timeTrack(time.Now(), "Total")
 			cfgInit := func(c *commandeer) error {
 				if cc.buildWatch {
 					c.Set("disableLiveReload", true)
@@ -187,10 +195,6 @@ Complete documentation is available at http://gohugo.io/.`,
 	cc.cmd.SetGlobalNormalizationFunc(helpers.NormalizeHugoFlags)
 	cc.cmd.SilenceUsage = true
 
-	cc.cmd.PostRun = func(_ *cobra.Command, _ []string) {
-		shimgo.Cleanup()
-	}
-
 	return cc
 }
 
@@ -208,6 +212,7 @@ type hugoBuilderCommon struct {
 	memprofile   string
 	mutexprofile string
 	traceprofile string
+	printm       bool
 
 	// TODO(bep) var vs string
 	logging    bool
@@ -219,6 +224,14 @@ type hugoBuilderCommon struct {
 	cfgFile string
 	cfgDir  string
 	logFile string
+}
+
+func (cc *hugoBuilderCommon) timeTrack(start time.Time, name string) {
+	if cc.quiet {
+		return
+	}
+	elapsed := time.Since(start)
+	fmt.Printf("%s in %s\n", name, elapsed)
 }
 
 func (cc *hugoBuilderCommon) getConfigDir(baseDir string) string {
@@ -242,6 +255,11 @@ func (cc *hugoBuilderCommon) getEnvironment(isServer bool) string {
 		return v
 	}
 
+	//  Used by Netlify and Forestry
+	if v, found := os.LookupEnv("HUGO_ENV"); found {
+		return v
+	}
+
 	if isServer {
 		return hugo.EnvironmentDevelopment
 	}
@@ -249,20 +267,26 @@ func (cc *hugoBuilderCommon) getEnvironment(isServer bool) string {
 	return hugo.EnvironmentProduction
 }
 
+func (cc *hugoBuilderCommon) handleCommonBuilderFlags(cmd *cobra.Command) {
+	cmd.PersistentFlags().StringVarP(&cc.source, "source", "s", "", "filesystem path to read files relative from")
+	cmd.PersistentFlags().SetAnnotation("source", cobra.BashCompSubdirsInDir, []string{})
+	cmd.PersistentFlags().StringVarP(&cc.environment, "environment", "e", "", "build environment")
+	cmd.PersistentFlags().StringP("themesDir", "", "", "filesystem path to themes directory")
+	cmd.PersistentFlags().BoolP("ignoreVendor", "", false, "ignores any _vendor directory")
+}
+
 func (cc *hugoBuilderCommon) handleFlags(cmd *cobra.Command) {
+	cc.handleCommonBuilderFlags(cmd)
 	cmd.Flags().Bool("cleanDestinationDir", false, "remove files from destination not found in static directories")
 	cmd.Flags().BoolP("buildDrafts", "D", false, "include content marked as draft")
 	cmd.Flags().BoolP("buildFuture", "F", false, "include content with publishdate in the future")
 	cmd.Flags().BoolP("buildExpired", "E", false, "include expired content")
-	cmd.Flags().StringVarP(&cc.source, "source", "s", "", "filesystem path to read files relative from")
-	cmd.Flags().StringVarP(&cc.environment, "environment", "e", "", "build environment")
 	cmd.Flags().StringP("contentDir", "c", "", "filesystem path to content directory")
 	cmd.Flags().StringP("layoutDir", "l", "", "filesystem path to layout directory")
 	cmd.Flags().StringP("cacheDir", "", "", "filesystem path to cache directory. Defaults: $TMPDIR/hugo_cache/")
 	cmd.Flags().BoolP("ignoreCache", "", false, "ignores the cache directory")
 	cmd.Flags().StringP("destination", "d", "", "filesystem path to write files to")
 	cmd.Flags().StringSliceP("theme", "t", []string{}, "themes to use (located in /themes/THEMENAME/)")
-	cmd.Flags().StringP("themesDir", "", "", "filesystem path to themes directory")
 	cmd.Flags().StringVarP(&cc.baseURL, "baseURL", "b", "", "hostname (and path) to the root, e.g. http://spf13.com/")
 	cmd.Flags().Bool("enableGitInfo", false, "add Git revision, date and author info to the pages")
 	cmd.Flags().BoolVar(&cc.gc, "gc", false, "enable to run some cleanup tasks (remove unused cache files) after the build")
@@ -276,6 +300,7 @@ func (cc *hugoBuilderCommon) handleFlags(cmd *cobra.Command) {
 	cmd.Flags().BoolP("path-warnings", "", false, "print warnings on duplicate target paths etc.")
 	cmd.Flags().StringVarP(&cc.cpuprofile, "profile-cpu", "", "", "write cpu profile to `file`")
 	cmd.Flags().StringVarP(&cc.memprofile, "profile-mem", "", "", "write memory profile to `file`")
+	cmd.Flags().BoolVarP(&cc.printm, "print-mem", "", false, "print memory usage to screen at intervals")
 	cmd.Flags().StringVarP(&cc.mutexprofile, "profile-mutex", "", "", "write Mutex profile to `file`")
 	cmd.Flags().StringVarP(&cc.traceprofile, "trace", "", "", "write trace to `file` (not useful in general)")
 

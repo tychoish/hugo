@@ -1,15 +1,13 @@
 language: go
 sudo: false
-dist: xenial
+dist: trusty
 env:
   global:
-  - GOPROXY="https://proxy.golang.org"
   - HUGO_BUILD_TAGS="extended"
 git:
   depth: false
 go:
-  - "1.11.10"
-  - "1.12.5"
+  - "1.11.4"
   - tip
 os:
   - linux
@@ -25,7 +23,7 @@ matrix:
 
 install:
   - mkdir -p $HOME/src
-  - mv $TRAVIS_BUILD_DIR $HOME/src
+  - mv $HOME/gopath/src/github.com/gohugoio/hugo $HOME/src
   - export TRAVIS_BUILD_DIR=$HOME/src/hugo
   - cd $HOME/src/hugo
   - go get github.com/magefile/mage
@@ -39,8 +37,8 @@ script:
   - df -h
 
 before_install:
-  # more recent version of ruby is required for sinatra
-  - rvm install 2.2.4
-  # gem install must be run with sudo on OSX
-  - sudo gem install asciidoctor sinatra --no-ri --no-rdoc | gem install asciidoctor sinatra --no-ri --no-rdoc
-  - sudo pip install docutils flask
+  - df -h
+    # https://travis-ci.community/t/go-cant-find-gcc-with-go1-11-1-on-windows/293/5
+  - if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then choco install mingw -y; export PATH=/c/tools/mingw64/bin:"$PATH"; fi
+  - gem install asciidoctor
+  - type asciidoctor

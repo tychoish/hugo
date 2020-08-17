@@ -5,10 +5,11 @@ import (
 	"strings"
 	"testing"
 
-	"os"
 	"path/filepath"
 	"time"
 
+	qt "github.com/frankban/quicktest"
+	"github.com/gohugoio/hugo/htesting"
 	"github.com/gohugoio/hugo/resources/page"
 
 	"github.com/fortytw2/leaktest"
@@ -16,7 +17,6 @@ import (
 	"github.com/gohugoio/hugo/helpers"
 	"github.com/gohugoio/hugo/hugofs"
 	"github.com/spf13/afero"
-	"github.com/stretchr/testify/require"
 )
 
 func TestMultiSitesMainLangInRoot(t *testing.T) {
@@ -27,7 +27,7 @@ func TestMultiSitesMainLangInRoot(t *testing.T) {
 }
 
 func doTestMultiSitesMainLangInRoot(t *testing.T, defaultInSubDir bool) {
-	assert := require.New(t)
+	c := qt.New(t)
 
 	siteConfig := map[string]interface{}{
 		"DefaultContentLanguage":         "fr",
@@ -50,29 +50,28 @@ func doTestMultiSitesMainLangInRoot(t *testing.T, defaultInSubDir bool) {
 	b.Build(BuildCfg{})
 
 	sites := b.H.Sites
-
-	require.Len(t, sites, 4)
+	c.Assert(len(sites), qt.Equals, 4)
 
 	enSite := sites[0]
 	frSite := sites[1]
 
-	assert.Equal("/en", enSite.Info.LanguagePrefix)
+	c.Assert(enSite.Info.LanguagePrefix, qt.Equals, "/en")
 
 	if defaultInSubDir {
-		assert.Equal("/fr", frSite.Info.LanguagePrefix)
+		c.Assert(frSite.Info.LanguagePrefix, qt.Equals, "/fr")
 	} else {
-		assert.Equal("", frSite.Info.LanguagePrefix)
+		c.Assert(frSite.Info.LanguagePrefix, qt.Equals, "")
 	}
 
-	assert.Equal("/blog/en/foo", enSite.PathSpec.RelURL("foo", true))
+	c.Assert(enSite.PathSpec.RelURL("foo", true), qt.Equals, "/blog/en/foo")
 
 	doc1en := enSite.RegularPages()[0]
 	doc1fr := frSite.RegularPages()[0]
 
 	enPerm := doc1en.Permalink()
 	enRelPerm := doc1en.RelPermalink()
-	assert.Equal("http://example.com/blog/en/sect/doc1-slug/", enPerm)
-	assert.Equal("/blog/en/sect/doc1-slug/", enRelPerm)
+	c.Assert(enPerm, qt.Equals, "http://example.com/blog/en/sect/doc1-slug/")
+	c.Assert(enRelPerm, qt.Equals, "/blog/en/sect/doc1-slug/")
 
 	frPerm := doc1fr.Permalink()
 	frRelPerm := doc1fr.RelPermalink()
@@ -81,15 +80,15 @@ func doTestMultiSitesMainLangInRoot(t *testing.T, defaultInSubDir bool) {
 	b.AssertFileContent("public/en/sect/doc1-slug/index.html", "Single", "Hello")
 
 	if defaultInSubDir {
-		assert.Equal("http://example.com/blog/fr/sect/doc1/", frPerm)
-		assert.Equal("/blog/fr/sect/doc1/", frRelPerm)
+		c.Assert(frPerm, qt.Equals, "http://example.com/blog/fr/sect/doc1/")
+		c.Assert(frRelPerm, qt.Equals, "/blog/fr/sect/doc1/")
 
 		// should have a redirect on top level.
 		b.AssertFileContent("public/index.html", `<meta http-equiv="refresh" content="0; url=http://example.com/blog/fr" />`)
 	} else {
 		// Main language in root
-		assert.Equal("http://example.com/blog/sect/doc1/", frPerm)
-		assert.Equal("/blog/sect/doc1/", frRelPerm)
+		c.Assert(frPerm, qt.Equals, "http://example.com/blog/sect/doc1/")
+		c.Assert(frRelPerm, qt.Equals, "/blog/sect/doc1/")
 
 		// should have redirect back to root
 		b.AssertFileContent("public/fr/index.html", `<meta http-equiv="refresh" content="0; url=http://example.com/blog" />`)
@@ -155,7 +154,7 @@ func doTestMultiSitesMainLangInRoot(t *testing.T, defaultInSubDir bool) {
 func TestMultiSitesWithTwoLanguages(t *testing.T) {
 	t.Parallel()
 
-	assert := require.New(t)
+	c := qt.New(t)
 	b := newTestSitesBuilder(t).WithConfigFile("toml", `
 
 defaultContentLanguage = "nn"
@@ -180,23 +179,23 @@ p1 = "p1en"
 	b.Build(BuildCfg{SkipRender: true})
 	sites := b.H.Sites
 
-	assert.Len(sites, 2)
+	c.Assert(len(sites), qt.Equals, 2)
 
 	nnSite := sites[0]
 	nnHome := nnSite.getPage(page.KindHome)
-	assert.Len(nnHome.AllTranslations(), 2)
-	assert.Len(nnHome.Translations(), 1)
-	assert.True(nnHome.IsTranslated())
+	c.Assert(len(nnHome.AllTranslations()), qt.Equals, 2)
+	c.Assert(len(nnHome.Translations()), qt.Equals, 1)
+	c.Assert(nnHome.IsTranslated(), qt.Equals, true)
 
 	enHome := sites[1].getPage(page.KindHome)
 
 	p1, err := enHome.Param("p1")
-	assert.NoError(err)
-	assert.Equal("p1en", p1)
+	c.Assert(err, qt.IsNil)
+	c.Assert(p1, qt.Equals, "p1en")
 
 	p1, err = nnHome.Param("p1")
-	assert.NoError(err)
-	assert.Equal("p1nn", p1)
+	c.Assert(err, qt.IsNil)
+	c.Assert(p1, qt.Equals, "p1nn")
 }
 
 func TestMultiSitesBuild(t *testing.T) {
@@ -218,44 +217,48 @@ func TestMultiSitesBuild(t *testing.T) {
 }
 
 func doTestMultiSitesBuild(t *testing.T, configTemplate, configSuffix string) {
-	assert := require.New(t)
+	c := qt.New(t)
 
 	b := newMultiSiteTestBuilder(t, configSuffix, configTemplate, nil)
 	b.CreateSites()
 
 	sites := b.H.Sites
-	assert.Equal(4, len(sites))
+	c.Assert(len(sites), qt.Equals, 4)
 
 	b.Build(BuildCfg{})
 
 	// Check site config
 	for _, s := range sites {
-		require.True(t, s.Info.defaultContentLanguageInSubdir, s.Info.title)
-		require.NotNil(t, s.disabledKinds)
+		c.Assert(s.Info.defaultContentLanguageInSubdir, qt.Equals, true)
+		c.Assert(s.disabledKinds, qt.Not(qt.IsNil))
 	}
 
 	gp1 := b.H.GetContentPage(filepath.FromSlash("content/sect/doc1.en.md"))
-	require.NotNil(t, gp1)
-	require.Equal(t, "doc1", gp1.Title())
+	c.Assert(gp1, qt.Not(qt.IsNil))
+	c.Assert(gp1.Title(), qt.Equals, "doc1")
 	gp2 := b.H.GetContentPage(filepath.FromSlash("content/dummysect/notfound.md"))
-	require.Nil(t, gp2)
+	c.Assert(gp2, qt.IsNil)
 
 	enSite := sites[0]
 	enSiteHome := enSite.getPage(page.KindHome)
-	require.True(t, enSiteHome.IsTranslated())
+	c.Assert(enSiteHome.IsTranslated(), qt.Equals, true)
 
-	require.Equal(t, "en", enSite.language.Lang)
+	c.Assert(enSite.language.Lang, qt.Equals, "en")
 
-	assert.Equal(5, len(enSite.RegularPages()))
-	assert.Equal(32, len(enSite.AllPages()))
+	//dumpPages(enSite.RegularPages()...)
+
+	c.Assert(len(enSite.RegularPages()), qt.Equals, 5)
+	c.Assert(len(enSite.AllPages()), qt.Equals, 32)
 
 	// Check 404s
 	b.AssertFileContent("public/en/404.html", "404|en|404 Page not found")
 	b.AssertFileContent("public/fr/404.html", "404|fr|404 Page not found")
 
 	// Check robots.txt
-	b.AssertFileContent("public/en/robots.txt", "robots|en|")
-	b.AssertFileContent("public/nn/robots.txt", "robots|nn|")
+	// the domain root is the public directory, so the robots.txt has to be created there and not in the language directories
+	b.AssertFileContent("public/robots.txt", "robots")
+	b.AssertFileDoesNotExist("public/en/robots.txt")
+	b.AssertFileDoesNotExist("public/nn/robots.txt")
 
 	b.AssertFileContent("public/en/sect/doc1-slug/index.html", "Permalink: http://example.com/blog/en/sect/doc1-slug/")
 	b.AssertFileContent("public/en/sect/doc2/index.html", "Permalink: http://example.com/blog/en/sect/doc2/")
@@ -263,33 +266,33 @@ func doTestMultiSitesBuild(t *testing.T, configTemplate, configSuffix string) {
 
 	doc2 := enSite.RegularPages()[1]
 	doc3 := enSite.RegularPages()[2]
-	require.Equal(t, doc2.Prev(), doc3, "doc3 should follow doc2, in .PrevPage")
+	c.Assert(doc3, qt.Equals, doc2.Prev())
 	doc1en := enSite.RegularPages()[0]
 	doc1fr := doc1en.Translations()[0]
 	b.AssertFileContent("public/fr/sect/doc1/index.html", "Permalink: http://example.com/blog/fr/sect/doc1/")
 
-	require.Equal(t, doc1en.Translations()[0], doc1fr, "doc1-en should have doc1-fr as translation")
-	require.Equal(t, doc1fr.Translations()[0], doc1en, "doc1-fr should have doc1-en as translation")
-	require.Equal(t, "fr", doc1fr.Language().Lang)
+	c.Assert(doc1fr, qt.Equals, doc1en.Translations()[0])
+	c.Assert(doc1en, qt.Equals, doc1fr.Translations()[0])
+	c.Assert(doc1fr.Language().Lang, qt.Equals, "fr")
 
 	doc4 := enSite.AllPages()[4]
-	require.Len(t, doc4.Translations(), 0, "found translations for doc4")
+	c.Assert(len(doc4.Translations()), qt.Equals, 0)
 
 	// Taxonomies and their URLs
-	require.Len(t, enSite.Taxonomies, 1, "should have 1 taxonomy")
-	tags := enSite.Taxonomies["tags"]
-	require.Len(t, tags, 2, "should have 2 different tags")
-	require.Equal(t, tags["tag1"][0].Page, doc1en, "first tag1 page should be doc1")
+	c.Assert(len(enSite.Taxonomies()), qt.Equals, 1)
+	tags := enSite.Taxonomies()["tags"]
+	c.Assert(len(tags), qt.Equals, 2)
+	c.Assert(doc1en, qt.Equals, tags["tag1"][0].Page)
 
 	frSite := sites[1]
 
-	require.Equal(t, "fr", frSite.language.Lang)
-	require.Len(t, frSite.RegularPages(), 4, "should have 3 pages")
-	require.Len(t, frSite.AllPages(), 32, "should have 32 total pages (including translations and nodes)")
+	c.Assert(frSite.language.Lang, qt.Equals, "fr")
+	c.Assert(len(frSite.RegularPages()), qt.Equals, 4)
+	c.Assert(len(frSite.AllPages()), qt.Equals, 32)
 
 	for _, frenchPage := range frSite.RegularPages() {
 		p := frenchPage
-		require.Equal(t, "fr", p.Language().Lang)
+		c.Assert(p.Language().Lang, qt.Equals, "fr")
 	}
 
 	// See https://github.com/gohugoio/hugo/issues/4285
@@ -301,10 +304,10 @@ func doTestMultiSitesBuild(t *testing.T, configTemplate, configSuffix string) {
 	getPageDoc1EnBase := enSite.getPage(page.KindPage, "sect/doc1")
 	getPageDoc1Fr := frSite.getPage(page.KindPage, filepath.ToSlash(doc1fr.File().Path()))
 	getPageDoc1FrBase := frSite.getPage(page.KindPage, "sect/doc1")
-	require.Equal(t, doc1en, getPageDoc1En)
-	require.Equal(t, doc1fr, getPageDoc1Fr)
-	require.Equal(t, doc1en, getPageDoc1EnBase)
-	require.Equal(t, doc1fr, getPageDoc1FrBase)
+	c.Assert(getPageDoc1En, qt.Equals, doc1en)
+	c.Assert(getPageDoc1Fr, qt.Equals, doc1fr)
+	c.Assert(getPageDoc1EnBase, qt.Equals, doc1en)
+	c.Assert(getPageDoc1FrBase, qt.Equals, doc1fr)
 
 	// Check redirect to main language, French
 	b.AssertFileContent("public/index.html", "0; url=http://example.com/blog/fr")
@@ -319,35 +322,35 @@ func doTestMultiSitesBuild(t *testing.T, configTemplate, configSuffix string) {
 
 	// Check node translations
 	homeEn := enSite.getPage(page.KindHome)
-	require.NotNil(t, homeEn)
-	require.Len(t, homeEn.Translations(), 3)
-	require.Equal(t, "fr", homeEn.Translations()[0].Language().Lang)
-	require.Equal(t, "nn", homeEn.Translations()[1].Language().Lang)
-	require.Equal(t, "På nynorsk", homeEn.Translations()[1].Title())
-	require.Equal(t, "nb", homeEn.Translations()[2].Language().Lang)
-	require.Equal(t, "På bokmål", homeEn.Translations()[2].Title(), configSuffix)
-	require.Equal(t, "Bokmål", homeEn.Translations()[2].Language().LanguageName, configSuffix)
+	c.Assert(homeEn, qt.Not(qt.IsNil))
+	c.Assert(len(homeEn.Translations()), qt.Equals, 3)
+	c.Assert(homeEn.Translations()[0].Language().Lang, qt.Equals, "fr")
+	c.Assert(homeEn.Translations()[1].Language().Lang, qt.Equals, "nn")
+	c.Assert(homeEn.Translations()[1].Title(), qt.Equals, "På nynorsk")
+	c.Assert(homeEn.Translations()[2].Language().Lang, qt.Equals, "nb")
+	c.Assert(homeEn.Translations()[2].Title(), qt.Equals, "På bokmål")
+	c.Assert(homeEn.Translations()[2].Language().LanguageName, qt.Equals, "Bokmål")
 
 	sectFr := frSite.getPage(page.KindSection, "sect")
-	require.NotNil(t, sectFr)
+	c.Assert(sectFr, qt.Not(qt.IsNil))
 
-	require.Equal(t, "fr", sectFr.Language().Lang)
-	require.Len(t, sectFr.Translations(), 1)
-	require.Equal(t, "en", sectFr.Translations()[0].Language().Lang)
-	require.Equal(t, "Sects", sectFr.Translations()[0].Title())
+	c.Assert(sectFr.Language().Lang, qt.Equals, "fr")
+	c.Assert(len(sectFr.Translations()), qt.Equals, 1)
+	c.Assert(sectFr.Translations()[0].Language().Lang, qt.Equals, "en")
+	c.Assert(sectFr.Translations()[0].Title(), qt.Equals, "Sects")
 
 	nnSite := sites[2]
-	require.Equal(t, "nn", nnSite.language.Lang)
-	taxNn := nnSite.getPage(page.KindTaxonomyTerm, "lag")
-	require.NotNil(t, taxNn)
-	require.Len(t, taxNn.Translations(), 1)
-	require.Equal(t, "nb", taxNn.Translations()[0].Language().Lang)
+	c.Assert(nnSite.language.Lang, qt.Equals, "nn")
+	taxNn := nnSite.getPage(page.KindTaxonomy, "lag")
+	c.Assert(taxNn, qt.Not(qt.IsNil))
+	c.Assert(len(taxNn.Translations()), qt.Equals, 1)
+	c.Assert(taxNn.Translations()[0].Language().Lang, qt.Equals, "nb")
 
-	taxTermNn := nnSite.getPage(page.KindTaxonomy, "lag", "sogndal")
-	require.NotNil(t, taxTermNn)
-	require.Equal(t, taxTermNn, nnSite.getPage(page.KindTaxonomy, "LAG", "SOGNDAL"))
-	require.Len(t, taxTermNn.Translations(), 1)
-	require.Equal(t, "nb", taxTermNn.Translations()[0].Language().Lang)
+	taxTermNn := nnSite.getPage(page.KindTerm, "lag", "sogndal")
+	c.Assert(taxTermNn, qt.Not(qt.IsNil))
+	c.Assert(nnSite.getPage(page.KindTerm, "LAG", "SOGNDAL"), qt.Equals, taxTermNn)
+	c.Assert(len(taxTermNn.Translations()), qt.Equals, 1)
+	c.Assert(taxTermNn.Translations()[0].Language().Lang, qt.Equals, "nb")
 
 	// Check sitemap(s)
 	b.AssertFileContent("public/sitemap.xml",
@@ -357,57 +360,56 @@ func doTestMultiSitesBuild(t *testing.T, configTemplate, configSuffix string) {
 	b.AssertFileContent("public/fr/sitemap.xml", "http://example.com/blog/fr/sect/doc1/")
 
 	// Check taxonomies
-	enTags := enSite.Taxonomies["tags"]
-	frTags := frSite.Taxonomies["plaques"]
-	require.Len(t, enTags, 2, fmt.Sprintf("Tags in en: %v", enTags))
-	require.Len(t, frTags, 2, fmt.Sprintf("Tags in fr: %v", frTags))
-	require.NotNil(t, enTags["tag1"])
-	require.NotNil(t, frTags["FRtag1"])
+	enTags := enSite.Taxonomies()["tags"]
+	frTags := frSite.Taxonomies()["plaques"]
+	c.Assert(len(enTags), qt.Equals, 2, qt.Commentf("Tags in en: %v", enTags))
+	c.Assert(len(frTags), qt.Equals, 2, qt.Commentf("Tags in fr: %v", frTags))
+	c.Assert(enTags["tag1"], qt.Not(qt.IsNil))
+	c.Assert(frTags["FRtag1"], qt.Not(qt.IsNil))
 	b.AssertFileContent("public/fr/plaques/FRtag1/index.html", "FRtag1|Bonjour|http://example.com/blog/fr/plaques/FRtag1/")
-	b.AssertFileContent("public/en/tags/tag1/index.html", "tag1|Hello|http://example.com/blog/en/tags/tag1/")
 
 	// Check Blackfriday config
-	require.True(t, strings.Contains(content(doc1fr), "&laquo;"), content(doc1fr))
-	require.False(t, strings.Contains(content(doc1en), "&laquo;"), content(doc1en))
-	require.True(t, strings.Contains(content(doc1en), "&ldquo;"), content(doc1en))
+	c.Assert(strings.Contains(content(doc1fr), "&laquo;"), qt.Equals, true)
+	c.Assert(strings.Contains(content(doc1en), "&laquo;"), qt.Equals, false)
+	c.Assert(strings.Contains(content(doc1en), "&ldquo;"), qt.Equals, true)
 
 	// en and nn have custom site menus
-	require.Len(t, frSite.Menus(), 0, "fr: "+configSuffix)
-	require.Len(t, enSite.Menus(), 1, "en: "+configSuffix)
-	require.Len(t, nnSite.Menus(), 1, "nn: "+configSuffix)
+	c.Assert(len(frSite.Menus()), qt.Equals, 0)
+	c.Assert(len(enSite.Menus()), qt.Equals, 1)
+	c.Assert(len(nnSite.Menus()), qt.Equals, 1)
 
-	require.Equal(t, "Home", enSite.Menus()["main"].ByName()[0].Name)
-	require.Equal(t, "Heim", nnSite.Menus()["main"].ByName()[0].Name)
+	c.Assert(enSite.Menus()["main"].ByName()[0].Name, qt.Equals, "Home")
+	c.Assert(nnSite.Menus()["main"].ByName()[0].Name, qt.Equals, "Heim")
 
 	// Issue #3108
 	prevPage := enSite.RegularPages()[0].Prev()
-	require.NotNil(t, prevPage)
-	require.Equal(t, page.KindPage, prevPage.Kind())
+	c.Assert(prevPage, qt.Not(qt.IsNil))
+	c.Assert(prevPage.Kind(), qt.Equals, page.KindPage)
 
 	for {
 		if prevPage == nil {
 			break
 		}
-		require.Equal(t, page.KindPage, prevPage.Kind())
+		c.Assert(prevPage.Kind(), qt.Equals, page.KindPage)
 		prevPage = prevPage.Prev()
 	}
 
 	// Check bundles
 	b.AssertFileContent("public/fr/bundles/b1/index.html", "RelPermalink: /blog/fr/bundles/b1/|")
 	bundleFr := frSite.getPage(page.KindPage, "bundles/b1/index.md")
-	require.NotNil(t, bundleFr)
-	require.Equal(t, 1, len(bundleFr.Resources()))
+	c.Assert(bundleFr, qt.Not(qt.IsNil))
+	c.Assert(len(bundleFr.Resources()), qt.Equals, 1)
 	logoFr := bundleFr.Resources().GetMatch("logo*")
-	require.NotNil(t, logoFr)
+	c.Assert(logoFr, qt.Not(qt.IsNil))
 	b.AssertFileContent("public/fr/bundles/b1/index.html", "Resources: image/png: /blog/fr/bundles/b1/logo.png")
 	b.AssertFileContent("public/fr/bundles/b1/logo.png", "PNG Data")
 
 	bundleEn := enSite.getPage(page.KindPage, "bundles/b1/index.en.md")
-	require.NotNil(t, bundleEn)
+	c.Assert(bundleEn, qt.Not(qt.IsNil))
 	b.AssertFileContent("public/en/bundles/b1/index.html", "RelPermalink: /blog/en/bundles/b1/|")
-	require.Equal(t, 1, len(bundleEn.Resources()))
+	c.Assert(len(bundleEn.Resources()), qt.Equals, 1)
 	logoEn := bundleEn.Resources().GetMatch("logo*")
-	require.NotNil(t, logoEn)
+	c.Assert(logoEn, qt.Not(qt.IsNil))
 	b.AssertFileContent("public/en/bundles/b1/index.html", "Resources: image/png: /blog/en/bundles/b1/logo.png")
 	b.AssertFileContent("public/en/bundles/b1/logo.png", "PNG Data")
 
@@ -420,7 +422,7 @@ func TestMultiSitesRebuild(t *testing.T) {
 		defer leaktest.CheckTimeout(t, 10*time.Second)()
 	}
 
-	assert := require.New(t)
+	c := qt.New(t)
 
 	b := newMultiSiteTestDefaultBuilder(t).Running().CreateSites().Build(BuildCfg{})
 
@@ -432,8 +434,8 @@ func TestMultiSitesRebuild(t *testing.T) {
 	enSite := sites[0]
 	frSite := sites[1]
 
-	assert.Len(enSite.RegularPages(), 5)
-	assert.Len(frSite.RegularPages(), 4)
+	c.Assert(len(enSite.RegularPages()), qt.Equals, 5)
+	c.Assert(len(frSite.RegularPages()), qt.Equals, 4)
 
 	// Verify translations
 	b.AssertFileContent("public/en/sect/doc1-slug/index.html", "Hello")
@@ -444,10 +446,10 @@ func TestMultiSitesRebuild(t *testing.T) {
 	b.AssertFileContent("public/en/sect/doc1-slug/index.html", "Single", "Shortcode: Hello")
 
 	homeEn := enSite.getPage(page.KindHome)
-	require.NotNil(t, homeEn)
-	assert.Len(homeEn.Translations(), 3)
+	c.Assert(homeEn, qt.Not(qt.IsNil))
+	c.Assert(len(homeEn.Translations()), qt.Equals, 3)
 
-	contentFs := b.H.BaseFs.Content.Fs
+	contentFs := b.H.Fs.Source
 
 	for i, this := range []struct {
 		preFunc    func(t *testing.T)
@@ -467,22 +469,15 @@ func TestMultiSitesRebuild(t *testing.T) {
 			},
 			[]fsnotify.Event{{Name: filepath.FromSlash("content/sect/doc2.en.md"), Op: fsnotify.Remove}},
 			func(t *testing.T) {
-				assert.Len(enSite.RegularPages(), 4, "1 en removed")
+				c.Assert(len(enSite.RegularPages()), qt.Equals, 4, qt.Commentf("1 en removed"))
 
-				// Check build stats
-				require.Equal(t, 1, enSite.buildStats.draftCount, "Draft")
-				require.Equal(t, 1, enSite.buildStats.futureCount, "Future")
-				require.Equal(t, 1, enSite.buildStats.expiredCount, "Expired")
-				require.Equal(t, 0, frSite.buildStats.draftCount, "Draft")
-				require.Equal(t, 1, frSite.buildStats.futureCount, "Future")
-				require.Equal(t, 1, frSite.buildStats.expiredCount, "Expired")
 			},
 		},
 		{
 			func(t *testing.T) {
-				writeNewContentFile(t, contentFs, "new_en_1", "2016-07-31", "new1.en.md", -5)
-				writeNewContentFile(t, contentFs, "new_en_2", "1989-07-30", "new2.en.md", -10)
-				writeNewContentFile(t, contentFs, "new_fr_1", "2016-07-30", "new1.fr.md", 10)
+				writeNewContentFile(t, contentFs, "new_en_1", "2016-07-31", "content/new1.en.md", -5)
+				writeNewContentFile(t, contentFs, "new_en_2", "1989-07-30", "content/new2.en.md", -10)
+				writeNewContentFile(t, contentFs, "new_fr_1", "2016-07-30", "content/new1.fr.md", 10)
 			},
 			[]fsnotify.Event{
 				{Name: filepath.FromSlash("content/new1.en.md"), Op: fsnotify.Create},
@@ -490,36 +485,36 @@ func TestMultiSitesRebuild(t *testing.T) {
 				{Name: filepath.FromSlash("content/new1.fr.md"), Op: fsnotify.Create},
 			},
 			func(t *testing.T) {
-				assert.Len(enSite.RegularPages(), 6)
-				assert.Len(enSite.AllPages(), 34)
-				assert.Len(frSite.RegularPages(), 5)
-				require.Equal(t, "new_fr_1", frSite.RegularPages()[3].Title())
-				require.Equal(t, "new_en_2", enSite.RegularPages()[0].Title())
-				require.Equal(t, "new_en_1", enSite.RegularPages()[1].Title())
+				c.Assert(len(enSite.RegularPages()), qt.Equals, 6)
+				c.Assert(len(enSite.AllPages()), qt.Equals, 34)
+				c.Assert(len(frSite.RegularPages()), qt.Equals, 5)
+				c.Assert(frSite.RegularPages()[3].Title(), qt.Equals, "new_fr_1")
+				c.Assert(enSite.RegularPages()[0].Title(), qt.Equals, "new_en_2")
+				c.Assert(enSite.RegularPages()[1].Title(), qt.Equals, "new_en_1")
 
 				rendered := readDestination(t, fs, "public/en/new1/index.html")
-				require.True(t, strings.Contains(rendered, "new_en_1"), rendered)
+				c.Assert(strings.Contains(rendered, "new_en_1"), qt.Equals, true)
 			},
 		},
 		{
 			func(t *testing.T) {
-				p := "sect/doc1.en.md"
+				p := "content/sect/doc1.en.md"
 				doc1 := readFileFromFs(t, contentFs, p)
 				doc1 += "CHANGED"
 				writeToFs(t, contentFs, p, doc1)
 			},
 			[]fsnotify.Event{{Name: filepath.FromSlash("content/sect/doc1.en.md"), Op: fsnotify.Write}},
 			func(t *testing.T) {
-				assert.Len(enSite.RegularPages(), 6)
+				c.Assert(len(enSite.RegularPages()), qt.Equals, 6)
 				doc1 := readDestination(t, fs, "public/en/sect/doc1-slug/index.html")
-				require.True(t, strings.Contains(doc1, "CHANGED"), doc1)
+				c.Assert(strings.Contains(doc1, "CHANGED"), qt.Equals, true)
 
 			},
 		},
 		// Rename a file
 		{
 			func(t *testing.T) {
-				if err := contentFs.Rename("new1.en.md", "new1renamed.en.md"); err != nil {
+				if err := contentFs.Rename("content/new1.en.md", "content/new1renamed.en.md"); err != nil {
 					t.Fatalf("Rename failed: %s", err)
 				}
 			},
@@ -528,10 +523,10 @@ func TestMultiSitesRebuild(t *testing.T) {
 				{Name: filepath.FromSlash("content/new1.en.md"), Op: fsnotify.Rename},
 			},
 			func(t *testing.T) {
-				assert.Len(enSite.RegularPages(), 6, "Rename")
-				require.Equal(t, "new_en_1", enSite.RegularPages()[1].Title())
+				c.Assert(len(enSite.RegularPages()), qt.Equals, 6, qt.Commentf("Rename"))
+				c.Assert(enSite.RegularPages()[1].Title(), qt.Equals, "new_en_1")
 				rendered := readDestination(t, fs, "public/en/new1renamed/index.html")
-				require.True(t, strings.Contains(rendered, "new_en_1"), rendered)
+				c.Assert(rendered, qt.Contains, "new_en_1")
 			}},
 		{
 			// Change a template
@@ -543,11 +538,11 @@ func TestMultiSitesRebuild(t *testing.T) {
 			},
 			[]fsnotify.Event{{Name: filepath.FromSlash("layouts/_default/single.html"), Op: fsnotify.Write}},
 			func(t *testing.T) {
-				assert.Len(enSite.RegularPages(), 6)
-				assert.Len(enSite.AllPages(), 34)
-				assert.Len(frSite.RegularPages(), 5)
+				c.Assert(len(enSite.RegularPages()), qt.Equals, 6)
+				c.Assert(len(enSite.AllPages()), qt.Equals, 34)
+				c.Assert(len(frSite.RegularPages()), qt.Equals, 5)
 				doc1 := readDestination(t, fs, "public/en/sect/doc1-slug/index.html")
-				require.True(t, strings.Contains(doc1, "Template Changed"), doc1)
+				c.Assert(strings.Contains(doc1, "Template Changed"), qt.Equals, true)
 			},
 		},
 		{
@@ -560,18 +555,18 @@ func TestMultiSitesRebuild(t *testing.T) {
 			},
 			[]fsnotify.Event{{Name: filepath.FromSlash("i18n/fr.yaml"), Op: fsnotify.Write}},
 			func(t *testing.T) {
-				assert.Len(enSite.RegularPages(), 6)
-				assert.Len(enSite.AllPages(), 34)
-				assert.Len(frSite.RegularPages(), 5)
+				c.Assert(len(enSite.RegularPages()), qt.Equals, 6)
+				c.Assert(len(enSite.AllPages()), qt.Equals, 34)
+				c.Assert(len(frSite.RegularPages()), qt.Equals, 5)
 				docEn := readDestination(t, fs, "public/en/sect/doc1-slug/index.html")
-				require.True(t, strings.Contains(docEn, "Hello"), "No Hello")
+				c.Assert(strings.Contains(docEn, "Hello"), qt.Equals, true)
 				docFr := readDestination(t, fs, "public/fr/sect/doc1/index.html")
-				require.True(t, strings.Contains(docFr, "Salut"), "No Salut")
+				c.Assert(strings.Contains(docFr, "Salut"), qt.Equals, true)
 
 				homeEn := enSite.getPage(page.KindHome)
-				require.NotNil(t, homeEn)
-				assert.Len(homeEn.Translations(), 3)
-				require.Equal(t, "fr", homeEn.Translations()[0].Language().Lang)
+				c.Assert(homeEn, qt.Not(qt.IsNil))
+				c.Assert(len(homeEn.Translations()), qt.Equals, 3)
+				c.Assert(homeEn.Translations()[0].Language().Lang, qt.Equals, "fr")
 
 			},
 		},
@@ -584,9 +579,9 @@ func TestMultiSitesRebuild(t *testing.T) {
 				{Name: filepath.FromSlash("layouts/shortcodes/shortcode.html"), Op: fsnotify.Write},
 			},
 			func(t *testing.T) {
-				assert.Len(enSite.RegularPages(), 6)
-				assert.Len(enSite.AllPages(), 34)
-				assert.Len(frSite.RegularPages(), 5)
+				c.Assert(len(enSite.RegularPages()), qt.Equals, 6)
+				c.Assert(len(enSite.AllPages()), qt.Equals, 34)
+				c.Assert(len(frSite.RegularPages()), qt.Equals, 5)
 				b.AssertFileContent("public/fr/sect/doc1/index.html", "Single", "Modified Shortcode: Salut")
 				b.AssertFileContent("public/en/sect/doc1-slug/index.html", "Single", "Modified Shortcode: Hello")
 			},
@@ -606,102 +601,6 @@ func TestMultiSitesRebuild(t *testing.T) {
 		this.assertFunc(t)
 	}
 
-}
-
-func TestAddNewLanguage(t *testing.T) {
-	t.Parallel()
-	assert := require.New(t)
-
-	b := newMultiSiteTestDefaultBuilder(t)
-	b.CreateSites().Build(BuildCfg{})
-
-	fs := b.Fs
-
-	newConfig := multiSiteTOMLConfigTemplate + `
-
-[Languages.sv]
-weight = 15
-title = "Svenska"
-`
-
-	writeNewContentFile(t, fs.Source, "Swedish Contentfile", "2016-01-01", "content/sect/doc1.sv.md", 10)
-	// replace the config
-	b.WithNewConfig(newConfig)
-
-	sites := b.H
-
-	assert.NoError(b.LoadConfig())
-	err := b.H.Build(BuildCfg{NewConfig: b.Cfg})
-
-	if err != nil {
-		t.Fatalf("Failed to rebuild sites: %s", err)
-	}
-
-	require.Len(t, sites.Sites, 5, fmt.Sprintf("Len %d", len(sites.Sites)))
-
-	// The Swedish site should be put in the middle (language weight=15)
-	enSite := sites.Sites[0]
-	svSite := sites.Sites[1]
-	frSite := sites.Sites[2]
-	require.True(t, enSite.language.Lang == "en", enSite.language.Lang)
-	require.True(t, svSite.language.Lang == "sv", svSite.language.Lang)
-	require.True(t, frSite.language.Lang == "fr", frSite.language.Lang)
-
-	homeEn := enSite.getPage(page.KindHome)
-	require.NotNil(t, homeEn)
-	require.Len(t, homeEn.Translations(), 4)
-
-	require.Equal(t, "sv", homeEn.Translations()[0].Language().Lang)
-
-	require.Len(t, enSite.RegularPages(), 5)
-	require.Len(t, frSite.RegularPages(), 4)
-
-	// Veriy Swedish site
-	require.Len(t, svSite.RegularPages(), 1)
-	svPage := svSite.RegularPages()[0]
-
-	require.Equal(t, "Swedish Contentfile", svPage.Title())
-	require.Equal(t, "sv", svPage.Language().Lang)
-	require.Len(t, svPage.Translations(), 2)
-	require.Len(t, svPage.AllTranslations(), 3)
-	require.Equal(t, "en", svPage.Translations()[0].Language().Lang)
-
-	// Regular pages have no children
-	require.Len(t, svPage.Pages(), 0)
-	require.Len(t, svPage.Data().(page.Data).Pages(), 0)
-
-}
-
-func TestChangeDefaultLanguage(t *testing.T) {
-	t.Parallel()
-
-	assert := require.New(t)
-
-	b := newMultiSiteTestBuilder(t, "", "", map[string]interface{}{
-		"DefaultContentLanguage":         "fr",
-		"DefaultContentLanguageInSubdir": false,
-	})
-	b.CreateSites().Build(BuildCfg{})
-
-	b.AssertFileContent("public/sect/doc1/index.html", "Single", "Bonjour")
-	b.AssertFileContent("public/en/sect/doc2/index.html", "Single", "Hello")
-
-	// Switch language
-	b.WithNewConfigData(map[string]interface{}{
-		"DefaultContentLanguage":         "en",
-		"DefaultContentLanguageInSubdir": false,
-	})
-
-	assert.NoError(b.LoadConfig())
-	err := b.H.Build(BuildCfg{NewConfig: b.Cfg})
-
-	if err != nil {
-		t.Fatalf("Failed to rebuild sites: %s", err)
-	}
-
-	// Default language is now en, so that should now be the "root" language
-	b.AssertFileContent("public/fr/sect/doc1/index.html", "Single", "Bonjour")
-	b.AssertFileContent("public/sect/doc2/index.html", "Single", "Hello")
 }
 
 // https://github.com/gohugoio/hugo/issues/4706
@@ -795,24 +694,24 @@ END
 		checkContent(b, fmt.Sprintf("public/%s/page%d/index.json", section, i), contentMatchers...)
 	}
 
-	checkContent(b, "public/s1/index.html", "P: s1/_index.md\nList: 10|List Content: 8335\n\n\nL1: 500 L2: 5\n\nRender 0: View: 8335\n\nRender 1: View: 8335\n\nRender 2: View: 8335\n\nRender 3: View: 8335\n\nRender 4: View: 8335\n\nEND\n")
-	checkContent(b, "public/s2/index.html", "P: s2/_index.md\nList: 10|List Content: 8335", "Render 4: View: 8335\n\nEND")
-	checkContent(b, "public/index.html", "P: _index.md\nList: 10|List Content: 8335", "4: View: 8335\n\nEND")
+	checkContent(b, "public/s1/index.html", "P: s1/_index.md\nList: 10|List Content: 8132\n\n\nL1: 500 L2: 5\n\nRender 0: View: 8132\n\nRender 1: View: 8132\n\nRender 2: View: 8132\n\nRender 3: View: 8132\n\nRender 4: View: 8132\n\nEND\n")
+	checkContent(b, "public/s2/index.html", "P: s2/_index.md\nList: 10|List Content: 8132", "Render 4: View: 8132\n\nEND")
+	checkContent(b, "public/index.html", "P: _index.md\nList: 10|List Content: 8132", "4: View: 8132\n\nEND")
 
 	// Check paginated pages
 	for i := 2; i <= 9; i++ {
-		checkContent(b, fmt.Sprintf("public/page/%d/index.html", i), fmt.Sprintf("Page: %d", i), "Content: 8335\n\n\nL1: 500 L2: 5\n\nRender 0: View: 8335", "Render 4: View: 8335\n\nEND")
+		checkContent(b, fmt.Sprintf("public/page/%d/index.html", i), fmt.Sprintf("Page: %d", i), "Content: 8132\n\n\nL1: 500 L2: 5\n\nRender 0: View: 8132", "Render 4: View: 8132\n\nEND")
 	}
 }
 
 func checkContent(s *sitesBuilder, filename string, matches ...string) {
+	s.T.Helper()
 	content := readDestination(s.T, s.Fs, filename)
 	for _, match := range matches {
 		if !strings.Contains(content, match) {
-			s.Fatalf("No match for %q in content for %s\n%q", match, filename, content)
+			s.Fatalf("No match for\n%q\nin content for %s\n%q\nDiff:\n%s", match, filename, content, htesting.DiffStrings(content, match))
 		}
 	}
-
 }
 
 func TestTranslationsFromContentToNonContent(t *testing.T) {
@@ -884,24 +783,24 @@ categories: ["mycat"]
 	} {
 
 		t.Run(path, func(t *testing.T) {
-			assert := require.New(t)
+			c := qt.New(t)
 
 			s1, _ := b.H.Sites[0].getPageNew(nil, path)
 			s2, _ := b.H.Sites[1].getPageNew(nil, path)
 
-			assert.NotNil(s1)
-			assert.NotNil(s2)
+			c.Assert(s1, qt.Not(qt.IsNil))
+			c.Assert(s2, qt.Not(qt.IsNil))
 
-			assert.Equal(1, len(s1.Translations()))
-			assert.Equal(1, len(s2.Translations()))
-			assert.Equal(s2, s1.Translations()[0])
-			assert.Equal(s1, s2.Translations()[0])
+			c.Assert(len(s1.Translations()), qt.Equals, 1)
+			c.Assert(len(s2.Translations()), qt.Equals, 1)
+			c.Assert(s1.Translations()[0], qt.Equals, s2)
+			c.Assert(s2.Translations()[0], qt.Equals, s1)
 
 			m1 := s1.Translations().MergeByLanguage(s2.Translations())
 			m2 := s2.Translations().MergeByLanguage(s1.Translations())
 
-			assert.Equal(1, len(m1))
-			assert.Equal(1, len(m2))
+			c.Assert(len(m1), qt.Equals, 1)
+			c.Assert(len(m2), qt.Equals, 1)
 		})
 
 	}
@@ -1081,7 +980,10 @@ enableRobotsTXT = true
 [permalinks]
 other = "/somewhere/else/:filename"
 
-[blackfriday]
+# TODO(bep)
+[markup]
+  defaultMarkdownHandler = "blackfriday"
+[markup.blackfriday]
 angledQuotes = true
 
 [Taxonomies]
@@ -1139,7 +1041,10 @@ enableRobotsTXT: true
 permalinks:
     other: "/somewhere/else/:filename"
 
-blackfriday:
+# TODO(bep)
+markup:
+  defaultMarkdownHandler: blackfriday
+  blackFriday:
     angledQuotes: true
 
 Taxonomies:
@@ -1197,9 +1102,12 @@ var multiSiteJSONConfigTemplate = `
   "permalinks": {
     "other": "/somewhere/else/:filename"
   },
-  "blackfriday": {
-    "angledQuotes": true
-  },
+  "markup": {
+		"defaultMarkdownHandler": "blackfriday",
+		"blackfriday": {
+	    "angledQuotes": true
+	  }
+   },
   "Taxonomies": {
     "tag": "tags"
   },
@@ -1261,16 +1169,19 @@ var multiSiteJSONConfigTemplate = `
 `
 
 func writeSource(t testing.TB, fs *hugofs.Fs, filename, content string) {
+	t.Helper()
 	writeToFs(t, fs.Source, filename, content)
 }
 
 func writeToFs(t testing.TB, fs afero.Fs, filename, content string) {
+	t.Helper()
 	if err := afero.WriteFile(fs, filepath.FromSlash(filename), []byte(content), 0755); err != nil {
 		t.Fatalf("Failed to write file: %s", err)
 	}
 }
 
 func readDestination(t testing.TB, fs *hugofs.Fs, filename string) string {
+	t.Helper()
 	return readFileFromFs(t, fs.Destination, filename)
 }
 
@@ -1287,6 +1198,7 @@ func readSource(t *testing.T, fs *hugofs.Fs, filename string) string {
 }
 
 func readFileFromFs(t testing.TB, fs afero.Fs, filename string) string {
+	t.Helper()
 	filename = filepath.Clean(filename)
 	b, err := afero.ReadFile(fs, filename)
 	if err != nil {
@@ -1303,13 +1215,16 @@ func readFileFromFs(t testing.TB, fs afero.Fs, filename string) string {
 			end++
 		}
 
-		root := filepath.Join(parts[start:end]...)
-		if hadSlash {
-			root = helpers.FilePathSeparator + root
-		}
+		/*
+			root := filepath.Join(parts[start:end]...)
+			if hadSlash {
+				root = helpers.FilePathSeparator + root
+			}
 
-		helpers.PrintFs(fs, root, os.Stdout)
-		Fatalf(t, "Failed to read file: %s", err)
+			helpers.PrintFs(fs, root, os.Stdout)
+		*/
+
+		t.Fatalf("Failed to read file: %s", err)
 	}
 	return string(b)
 }
@@ -1533,5 +1448,33 @@ weight: 2002
 PNG Data
 `)
 
+	i18nContent := func(id, value string) string {
+		return fmt.Sprintf(`
+[%s]
+other = %q
+`, id, value)
+	}
+
+	b.WithSourceFile("i18n/en.toml", i18nContent("hello", "Hello"))
+	b.WithSourceFile("i18n/fr.toml", i18nContent("hello", "Bonjour"))
+	b.WithSourceFile("i18n/nb.toml", i18nContent("hello", "Hallo"))
+	b.WithSourceFile("i18n/nn.toml", i18nContent("hello", "Hallo"))
+
 	return &multiSiteTestBuilder{sitesBuilder: b, configFormat: configFormat, config: config, configData: configData}
+}
+
+func TestRebuildOnAssetChange(t *testing.T) {
+	b := newTestSitesBuilder(t).Running()
+	b.WithTemplatesAdded("index.html", `
+{{ (resources.Get "data.json").Content }}
+`)
+	b.WithSourceFile("assets/data.json", "orig data")
+
+	b.Build(BuildCfg{})
+	b.AssertFileContent("public/index.html", `orig data`)
+
+	b.EditFiles("assets/data.json", "changed data")
+
+	b.Build(BuildCfg{})
+	b.AssertFileContent("public/index.html", `changed data`)
 }

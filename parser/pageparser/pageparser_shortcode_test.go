@@ -13,25 +13,31 @@
 
 package pageparser
 
-import "testing"
+import (
+	"testing"
+)
 
 var (
-	tstEOF       = nti(tEOF, "")
-	tstLeftNoMD  = nti(tLeftDelimScNoMarkup, "{{<")
-	tstRightNoMD = nti(tRightDelimScNoMarkup, ">}}")
-	tstLeftMD    = nti(tLeftDelimScWithMarkup, "{{%")
-	tstRightMD   = nti(tRightDelimScWithMarkup, "%}}")
-	tstSCClose   = nti(tScClose, "/")
-	tstSC1       = nti(tScName, "sc1")
-	tstSC1Inline = nti(tScNameInline, "sc1.inline")
-	tstSC2Inline = nti(tScNameInline, "sc2.inline")
-	tstSC2       = nti(tScName, "sc2")
-	tstSC3       = nti(tScName, "sc3")
-	tstSCSlash   = nti(tScName, "sc/sub")
-	tstParam1    = nti(tScParam, "param1")
-	tstParam2    = nti(tScParam, "param2")
-	tstVal       = nti(tScParamVal, "Hello World")
-	tstText      = nti(tText, "Hello World")
+	tstEOF            = nti(tEOF, "")
+	tstLeftNoMD       = nti(tLeftDelimScNoMarkup, "{{<")
+	tstRightNoMD      = nti(tRightDelimScNoMarkup, ">}}")
+	tstLeftMD         = nti(tLeftDelimScWithMarkup, "{{%")
+	tstRightMD        = nti(tRightDelimScWithMarkup, "%}}")
+	tstSCClose        = nti(tScClose, "/")
+	tstSC1            = nti(tScName, "sc1")
+	tstSC1Inline      = nti(tScNameInline, "sc1.inline")
+	tstSC2Inline      = nti(tScNameInline, "sc2.inline")
+	tstSC2            = nti(tScName, "sc2")
+	tstSC3            = nti(tScName, "sc3")
+	tstSCSlash        = nti(tScName, "sc/sub")
+	tstParam1         = nti(tScParam, "param1")
+	tstParam2         = nti(tScParam, "param2")
+	tstParamBoolTrue  = nti(tScParam, "true")
+	tstParamBoolFalse = nti(tScParam, "false")
+	tstParamInt       = nti(tScParam, "32")
+	tstParamFloat     = nti(tScParam, "3.14")
+	tstVal            = nti(tScParamVal, "Hello World")
+	tstText           = nti(tText, "Hello World")
 )
 
 var shortCodeLexerTests = []lexerTest{
@@ -69,11 +75,26 @@ var shortCodeLexerTests = []lexerTest{
 	{"close with extra keyword", `{{< sc1 >}}{{< /sc1 keyword>}}`, []Item{
 		tstLeftNoMD, tstSC1, tstRightNoMD, tstLeftNoMD, tstSCClose, tstSC1,
 		nti(tError, "unclosed shortcode")}},
+	{"float param, positional", `{{< sc1 3.14 >}}`, []Item{
+		tstLeftNoMD, tstSC1, nti(tScParam, "3.14"), tstRightNoMD, tstEOF}},
+	{"float param, named", `{{< sc1 param1=3.14 >}}`, []Item{
+		tstLeftNoMD, tstSC1, tstParam1, nti(tScParamVal, "3.14"), tstRightNoMD, tstEOF}},
+	{"named param, raw string", `{{< sc1 param1=` + "`" + "Hello World" + "`" + " >}}", []Item{
+		tstLeftNoMD, tstSC1, tstParam1, nti(tScParamVal, "Hello World"), tstRightNoMD, tstEOF}},
+	{"float param, named, space before", `{{< sc1 param1= 3.14 >}}`, []Item{
+		tstLeftNoMD, tstSC1, tstParam1, nti(tScParamVal, "3.14"), tstRightNoMD, tstEOF}},
 	{"Youtube id", `{{< sc1 -ziL-Q_456igdO-4 >}}`, []Item{
 		tstLeftNoMD, tstSC1, nti(tScParam, "-ziL-Q_456igdO-4"), tstRightNoMD, tstEOF}},
 	{"non-alphanumerics param quoted", `{{< sc1 "-ziL-.%QigdO-4" >}}`, []Item{
 		tstLeftNoMD, tstSC1, nti(tScParam, "-ziL-.%QigdO-4"), tstRightNoMD, tstEOF}},
-
+	{"raw string", `{{< sc1` + "`" + "Hello World" + "`" + ` >}}`, []Item{
+		tstLeftNoMD, tstSC1, nti(tScParam, "Hello World"), tstRightNoMD, tstEOF}},
+	{"raw string with newline", `{{< sc1` + "`" + `Hello 
+	World` + "`" + ` >}}`, []Item{
+		tstLeftNoMD, tstSC1, nti(tScParam, `Hello 
+	World`), tstRightNoMD, tstEOF}},
+	{"raw string with escape character", `{{< sc1` + "`" + `Hello \b World` + "`" + ` >}}`, []Item{
+		tstLeftNoMD, tstSC1, nti(tScParam, `Hello \b World`), tstRightNoMD, tstEOF}},
 	{"two params", `{{< sc1 param1   param2 >}}`, []Item{
 		tstLeftNoMD, tstSC1, tstParam1, tstParam2, tstRightNoMD, tstEOF}},
 	// issue #934
@@ -127,11 +148,24 @@ var shortCodeLexerTests = []lexerTest{
 	{"escaped quotes inside nonescaped quotes in positional param",
 		`{{< sc1 "Hello \"escaped\" World"  >}}`, []Item{
 			tstLeftNoMD, tstSC1, nti(tScParam, `Hello "escaped" World`), tstRightNoMD, tstEOF}},
+	{"escaped raw string, named param", `{{< sc1 param1=` + `\` + "`" + "Hello World" + `\` + "`" + ` >}}`, []Item{
+		tstLeftNoMD, tstSC1, tstParam1, nti(tError, "unrecognized escape character")}},
+	{"escaped raw string, positional param", `{{< sc1 param1 ` + `\` + "`" + "Hello World" + `\` + "`" + ` >}}`, []Item{
+		tstLeftNoMD, tstSC1, tstParam1, nti(tError, "unrecognized escape character")}},
+	{"two raw string params", `{{< sc1` + "`" + "Hello World" + "`" + "`" + "Second Param" + "`" + ` >}}`, []Item{
+		tstLeftNoMD, tstSC1, nti(tScParam, "Hello World"), nti(tScParam, "Second Param"), tstRightNoMD, tstEOF}},
 	{"unterminated quote", `{{< sc1 param2="Hello World>}}`, []Item{
 		tstLeftNoMD, tstSC1, tstParam2, nti(tError, "unterminated quoted string in shortcode parameter-argument: 'Hello World>}}'")}},
+	{"unterminated raw string", `{{< sc1` + "`" + "Hello World" + ` >}}`, []Item{
+		tstLeftNoMD, tstSC1, nti(tError, "unterminated raw string in shortcode parameter-argument: 'Hello World >}}'")}},
+	{"unterminated raw string in second argument", `{{< sc1` + "`" + "Hello World" + "`" + "`" + "Second Param" + ` >}}`, []Item{
+		tstLeftNoMD, tstSC1, nti(tScParam, "Hello World"), nti(tError, "unterminated raw string in shortcode parameter-argument: 'Second Param >}}'")}},
 	{"one named param, one not", `{{< sc1 param1="Hello World" p2 >}}`, []Item{
 		tstLeftNoMD, tstSC1, tstParam1, tstVal,
 		nti(tError, "got positional parameter 'p2'. Cannot mix named and positional parameters")}},
+	{"one named param, one quoted positional param, both raw strings", `{{< sc1 param1=` + "`" + "Hello World" + "`" + "`" + "Second Param" + "`" + ` >}}`, []Item{
+		tstLeftNoMD, tstSC1, tstParam1, tstVal,
+		nti(tError, "got quoted positional parameter. Cannot mix named and positional parameters")}},
 	{"one named param, one quoted positional param", `{{< sc1 param1="Hello World" "And Universe" >}}`, []Item{
 		tstLeftNoMD, tstSC1, tstParam1, tstVal,
 		nti(tError, "got quoted positional parameter. Cannot mix named and positional parameters")}},
