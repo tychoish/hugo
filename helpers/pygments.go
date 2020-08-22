@@ -303,14 +303,14 @@ func (cs *ContentSpec) chromaFormatterFromOptions(pygmentsOpts map[string]string
 	var options = []html.Option{html.TabWidth(4)}
 
 	if pygmentsOpts["noclasses"] == "false" {
-		options = append(options, html.WithClasses())
+		options = append(options, html.WithClasses(false))
 	}
 
 	lineNumbers := pygmentsOpts["linenos"]
 	if lineNumbers != "" {
-		options = append(options, html.WithLineNumbers())
+		options = append(options, html.WithLineNumbers(true))
 		if lineNumbers != "inline" {
-			options = append(options, html.LineNumbersInTable())
+			options = append(options, html.LineNumbersInTable(true))
 		}
 	}
 

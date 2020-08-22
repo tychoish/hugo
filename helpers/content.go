@@ -724,7 +724,7 @@ func orgRender(ctx *RenderingContext, c ContentSpec) []byte {
 	config := org.New()
 	config.Log = jww.WARN
 	writer := org.NewHTMLWriter()
-	writer.HighlightCodeBlock = func(source, lang string) string {
+	writer.HighlightCodeBlock = func(source, lang string, b bool) string {
 		highlightedSource, err := c.Highlight(source, lang, "")
 		if err != nil {
 			jww.ERROR.Printf("Could not highlight source as lang %s. Using raw source.", lang)
