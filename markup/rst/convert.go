@@ -15,13 +15,10 @@
 package rst
 
 import (
-	"bytes"
-	"runtime"
-
 	"github.com/cli/safeexec"
+	"github.com/tychoish/shimgo"
 
 	"github.com/gohugoio/hugo/identity"
-	"github.com/gohugoio/hugo/markup/internal"
 
 	"github.com/gohugoio/hugo/markup/converter"
 )
@@ -57,43 +54,13 @@ func (c *rstConverter) Supports(feature identity.Identity) bool {
 // getRstContent calls the Python script rst2html as an external helper
 // to convert reStructuredText content to HTML.
 func (c *rstConverter) getRstContent(src []byte, ctx converter.DocumentContext) []byte {
-	logger := c.cfg.Logger
-	path := getRstExecPath()
-
-	if path == "" {
-		logger.Println("rst2html / rst2html.py not found in $PATH: Please install.\n",
-			"                 Leaving reStructuredText content unrendered.")
+	out, err := shimgo.ConvertFromRst(src)
+	if err != nil {
+		c.cfg.Logger.Errorln("Problem rendering", ctx.DocumentName+":", err.Error())
 		return src
 	}
-	logger.Println("Rendering", ctx.DocumentName, "with", path, "...")
-	var result []byte
-	// certain *nix based OSs wrap executables in scripted launchers
-	// invoking binaries on these OSs via python interpreter causes SyntaxError
-	// invoke directly so that shebangs work as expected
-	// handle Windows manually because it doesn't do shebangs
-	if runtime.GOOS == "windows" {
-		python := internal.GetPythonExecPath()
-		args := []string{path, "--leave-comments", "--initial-header-level=2"}
-		result = internal.ExternallyRenderContent(c.cfg, ctx, src, python, args)
-	} else {
-		args := []string{"--leave-comments", "--initial-header-level=2"}
-		result = internal.ExternallyRenderContent(c.cfg, ctx, src, path, args)
-	}
-	// TODO(bep) check if rst2html has a body only option.
-	bodyStart := bytes.Index(result, []byte("<body>\n"))
-	if bodyStart < 0 {
-		bodyStart = -7 // compensate for length
-	}
 
-	bodyEnd := bytes.Index(result, []byte("\n</body>"))
-	if bodyEnd < 0 || bodyEnd >= len(result) {
-		bodyEnd = len(result) - 1
-		if bodyEnd < 0 {
-			bodyEnd = 0
-		}
-	}
-
-	return result[bodyStart+7 : bodyEnd]
+	return out
 }
 
 func getRstExecPath() string {

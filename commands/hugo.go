@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"github.com/gohugoio/hugo/hugofs"
+	"github.com/tychoish/shimgo"
 
 	"github.com/gohugoio/hugo/resources/page"
 
@@ -80,6 +81,8 @@ func (r Response) IsUserError() bool {
 // Execute adds all child commands to the root command HugoCmd and sets flags appropriately.
 // The args are usually filled with os.Args[1:].
 func Execute(args []string) Response {
+	defer shimgo.Cleanup()
+
 	hugoCmd := newCommandsBuilder().addAll().build()
 	cmd := hugoCmd.getCommand()
 	cmd.SetArgs(args)
@@ -675,7 +678,7 @@ func (c *commandeer) firstPathSpec() *helpers.PathSpec {
 
 func (c *commandeer) timeTrack(start time.Time, name string) {
 	elapsed := time.Since(start)
-	c.logger.Printf("%s in %v ms", name, int(1000*elapsed.Seconds()))
+	c.logger.Printf("%s in %s", name, elapsed)
 }
 
 // getDirList provides NewWatcher() with a list of directories to watch for changes.

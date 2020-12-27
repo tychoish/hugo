@@ -17,9 +17,11 @@ import (
 	"os"
 
 	"github.com/gohugoio/hugo/commands"
+	"github.com/tychoish/shimgo"
 )
 
 func main() {
+	defer shimgo.Cleanup()
 	resp := commands.Execute(os.Args[1:])
 
 	if resp.Err != nil {
